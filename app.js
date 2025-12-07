@@ -7,7 +7,7 @@ let roomCode = null;
 let userName = null;
 let isPaused = false;
 
-// Simple STUN configuration for desktop reliability
+// Simple STUN configuration
 const iceServers = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
@@ -293,19 +293,30 @@ function handleRoomJoined(data) {
 // Handle new listener (Broadcaster side)
 async function handleNewListener(data) {
   const listenerId = data.listenerId;
+  console.log(`[Broadcaster] New listener connected: ${listenerId}`);
 
   // Create new peer connection for this listener
   const pc = new RTCPeerConnection(iceServers);
   peerConnections.set(listenerId, pc);
 
-  // Add local stream tracks to peer connection
-  localStream.getTracks().forEach((track) => {
+  // Add ONLY audio tracks to peer connection (mobile compatibility)
+  localStream.getAudioTracks().forEach((track) => {
+    console.log(`[Broadcaster] Adding audio track for ${listenerId}`);
     pc.addTrack(track, localStream);
   });
 
   // Handle ICE candidates
   pc.onicecandidate = (event) => {
     if (event.candidate) {
+      const candidate = event.candidate;
+      console.log(`[Broadcaster] ICE candidate for ${listenerId}:`, {
+        type: candidate.type,
+        protocol: candidate.protocol,
+        address: candidate.address || candidate.candidate.split(' ')[4],
+        port: candidate.port,
+        candidate: candidate.candidate
+      });
+      
       ws.send(
         JSON.stringify({
           type: "ice-candidate",
@@ -313,6 +324,8 @@ async function handleNewListener(data) {
           candidate: event.candidate,
         })
       );
+    } else {
+      console.log(`[Broadcaster] ICE gathering complete for ${listenerId}`);
     }
   };
 
@@ -320,6 +333,8 @@ async function handleNewListener(data) {
   pc.onconnectionstatechange = () => {
     // Connection state changed
   };
+  
+  // Create offer
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
@@ -337,11 +352,13 @@ async function handleNewListener(data) {
 
 // Handle offer (Listener side)
 async function handleOffer(data) {
+  console.log('[Listener] Received offer from broadcaster');
   const pc = new RTCPeerConnection(iceServers);
   peerConnections.set("broadcaster", pc);
 
   // Handle incoming audio stream
   pc.ontrack = (event) => {
+    console.log('[Listener] Received remote audio track');
     remoteAudio.srcObject = event.streams[0];
 
     // Initialize visualizer with remote stream
@@ -351,9 +368,11 @@ async function handleOffer(data) {
     remoteAudio
       .play()
       .then(() => {
+        console.log('[Listener] Audio autoplay successful');
         if (enableAudioBtn) enableAudioBtn.classList.add("hidden");
       })
       .catch((err) => {
+        console.log('[Listener] Audio autoplay blocked, showing enable button');
         if (enableAudioBtn) enableAudioBtn.classList.remove("hidden");
       });
   };
@@ -368,6 +387,11 @@ async function handleOffer(data) {
         })
       );
     }
+  };
+
+  // Monitor connection state
+  pc.oniceconnectionstatechange = () => {
+    // ICE connection state changed
   };
 
   // Handle connection state changes
@@ -409,9 +433,12 @@ async function handleIceCandidate(data) {
   if (pc && data.candidate) {
     try {
       await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+      console.log(`[${role}] Added ICE candidate:`, data.candidate.type);
     } catch (error) {
-      // Error adding ICE candidate
+      console.error(`[${role}] Error adding ICE candidate:`, error);
     }
+  } else if (!pc) {
+    console.warn(`[${role}] Peer connection not found for ICE candidate`);
   }
 }
 

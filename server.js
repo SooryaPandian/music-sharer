@@ -13,7 +13,20 @@ const wss = new WebSocket.Server({ server });
 app.use(express.static(path.join(__dirname)));
 
 // WebSocket connection handler
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, req) => {
+  const clientIp = req.socket.remoteAddress;
+  const userAgent = req.headers['user-agent'];
+  console.log(`\n[SERVER] New WebSocket connection from ${clientIp}`);
+  console.log(`[SERVER] User-Agent: ${userAgent}`);
+  
+  ws.on('close', () => {
+    console.log(`[SERVER] WebSocket closed for ${clientIp}`);
+  });
+  
+  ws.on('error', (error) => {
+    console.error(`[SERVER] WebSocket error for ${clientIp}:`, error.message);
+  });
+  
   setupMessageHandlers(ws);
 });
 
