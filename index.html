@@ -21,7 +21,28 @@
           Share audio from your Chrome tabs in real-time. Perfect for listening
           to music together!
         </p>
+        <div class="user-info" id="userInfo">
+          <span id="userName">Guest</span>
+          <button class="btn-link" id="editNameBtn">✏️ Edit Name</button>
+        </div>
       </header>
+
+      <!-- Name Input Modal -->
+      <div id="nameModal" class="modal hidden">
+        <div class="modal-content">
+          <h2>Enter Your Name</h2>
+          <input
+            type="text"
+            id="nameInput"
+            placeholder="Your name"
+            maxlength="20"
+            autocomplete="off"
+          />
+          <div class="modal-buttons">
+            <button class="btn btn-primary" id="saveNameBtn">Save</button>
+          </div>
+        </div>
+      </div>
 
       <main>
         <!-- Home Screen -->
@@ -59,6 +80,16 @@
           <div class="room-info">
             <p class="room-label">Share this code with listeners</p>
             <div class="room-code" id="broadcasterRoomCode">------</div>
+            
+            <!-- Shareable URL Section -->
+            <div class="share-url-section">
+              <p class="room-label">Or share this link</p>
+              <div class="share-url-container">
+                <input type="text" id="shareUrlInput" readonly />
+                <button class="btn btn-secondary" id="copyUrlBtn">📋 Copy</button>
+              </div>
+            </div>
+            
             <div class="listener-count">
               <span>👥</span>
               <span id="listenerCount">0</span>
@@ -66,9 +97,9 @@
             </div>
           </div>
 
-          <div class="status status-broadcasting">
+          <div class="status status-broadcasting" id="broadcastStatus">
             <span class="status-dot"></span>
-            <span>Broadcasting</span>
+            <span id="broadcastStatusText">Broadcasting</span>
           </div>
 
           <div class="audio-visualizer">
@@ -78,6 +109,12 @@
           </div>
 
           <div class="controls">
+            <button class="btn btn-warning" id="pauseBroadcastBtn">
+              <span>⏸️ Pause</span>
+            </button>
+            <button class="btn btn-secondary" id="changeSourceBtn">
+              <span>🔄 Change Source</span>
+            </button>
             <button class="btn btn-danger" id="stopBroadcastBtn">
               <span>⏹️ Stop Sharing</span>
             </button>

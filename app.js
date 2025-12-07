@@ -4,6 +4,8 @@ let localStream = null;
 let peerConnections = new Map(); // Map of listener ID to RTCPeerConnection
 let role = null; // 'broadcaster' or 'listener'
 let roomCode = null;
+let userName = null;
+let isPaused = false;
 
 // Simple STUN configuration for desktop reliability
 const iceServers = {
@@ -22,6 +24,9 @@ const createRoomBtn = document.getElementById("createRoomBtn");
 const joinRoomBtn = document.getElementById("joinRoomBtn");
 const stopBroadcastBtn = document.getElementById("stopBroadcastBtn");
 const leaveRoomBtn = document.getElementById("leaveRoomBtn");
+const pauseBroadcastBtn = document.getElementById("pauseBroadcastBtn");
+const changeSourceBtn = document.getElementById("changeSourceBtn");
+const copyUrlBtn = document.getElementById("copyUrlBtn");
 
 const roomCodeInput = document.getElementById("roomCodeInput");
 const broadcasterRoomCode = document.getElementById("broadcasterRoomCode");
@@ -29,6 +34,14 @@ const listenerRoomCode = document.getElementById("listenerRoomCode");
 const listenerCount = document.getElementById("listenerCount");
 const listenerStatus = document.getElementById("listenerStatus");
 const listenerStatusText = document.getElementById("listenerStatusText");
+const shareUrlInput = document.getElementById("shareUrlInput");
+const userNameDisplay = document.getElementById("userName");
+const editNameBtn = document.getElementById("editNameBtn");
+const nameModal = document.getElementById("nameModal");
+const nameInput = document.getElementById("nameInput");
+const saveNameBtn = document.getElementById("saveNameBtn");
+const broadcastStatus = document.getElementById("broadcastStatus");
+const broadcastStatusText = document.getElementById("broadcastStatusText");
 
 const remoteAudio = document.getElementById("remoteAudio");
 const enableAudioBtn = document.getElementById("enableAudioBtn");
@@ -86,10 +99,15 @@ function connectWebSocket() {
 }
 
 // Event Listeners
-createRoomBtn.addEventListener("click", createRoom);
-joinRoomBtn.addEventListener("click", joinRoom);
+createRoomBtn.addEventListener("click", () => showNameModal('create'));
+joinRoomBtn.addEventListener("click", () => showNameModal('join'));
 stopBroadcastBtn.addEventListener("click", stopBroadcast);
 leaveRoomBtn.addEventListener("click", leaveRoom);
+pauseBroadcastBtn.addEventListener("click", togglePauseBroadcast);
+changeSourceBtn.addEventListener("click", changeAudioSource);
+copyUrlBtn.addEventListener("click", copyShareUrl);
+editNameBtn.addEventListener("click", () => showNameModal('edit'));
+saveNameBtn.addEventListener("click", saveName);
 
 // Allow Enter key to join room
 roomCodeInput.addEventListener("keypress", (e) => {
@@ -102,6 +120,78 @@ roomCodeInput.addEventListener("keypress", (e) => {
 roomCodeInput.addEventListener("input", (e) => {
   e.target.value = e.target.value.toUpperCase();
 });
+
+// Allow Enter key to save name
+nameInput.addEventListener("keypress", (e) => {
+  if (e.key === "Enter") {
+    saveName();
+  }
+});
+
+// User Name Management
+function loadUserName() {
+  const savedName = localStorage.getItem('musicSharerUserName');
+  if (savedName) {
+    userName = savedName;
+    userNameDisplay.textContent = userName;
+  }
+}
+
+function showNameModal(context) {
+  nameInput.value = userName || '';
+  nameModal.classList.remove('hidden');
+  nameInput.focus();
+  nameModal.dataset.context = context;
+}
+
+function saveName() {
+  const name = nameInput.value.trim();
+  if (!name) {
+    alert('Please enter a name');
+    return;
+  }
+  
+  userName = name;
+  localStorage.setItem('musicSharerUserName', userName);
+  userNameDisplay.textContent = userName;
+  nameModal.classList.add('hidden');
+  
+  const context = nameModal.dataset.context;
+  if (context === 'create') {
+    createRoom();
+  } else if (context === 'join') {
+    joinRoom();
+  }
+}
+
+// Shareable URL Functions
+function generateShareUrl(roomCode) {
+  const baseUrl = window.location.origin + window.location.pathname;
+  return `${baseUrl}?room=${roomCode}`;
+}
+
+function copyShareUrl() {
+  shareUrlInput.select();
+  navigator.clipboard.writeText(shareUrlInput.value).then(() => {
+    const originalText = copyUrlBtn.innerHTML;
+    copyUrlBtn.innerHTML = '✓ Copied!';
+    setTimeout(() => {
+      copyUrlBtn.innerHTML = originalText;
+    }, 2000);
+  });
+}
+
+// Check for room code in URL and auto-join
+function checkUrlForRoom() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const roomParam = urlParams.get('room');
+  
+  if (roomParam) {
+    roomCodeInput.value = roomParam.toUpperCase();
+    // Show name modal for joining
+    showNameModal('join');
+  }
+}
 
 
 
@@ -165,6 +255,10 @@ async function createRoom() {
 function handleRoomCreated(data) {
   roomCode = data.roomCode;
   broadcasterRoomCode.textContent = roomCode;
+  
+  // Set up shareable URL
+  const shareUrl = generateShareUrl(roomCode);
+  shareUrlInput.value = shareUrl;
 
   showScreen("broadcaster");
 }
@@ -185,6 +279,7 @@ function joinRoom() {
     JSON.stringify({
       type: "join-room",
       roomCode: code,
+      userName: userName,
     })
   );
 }
@@ -333,6 +428,83 @@ function handleError(data) {
   showScreen("home");
 }
 
+// Toggle pause/resume broadcast
+function togglePauseBroadcast() {
+  if (!localStream) return;
+  
+  isPaused = !isPaused;
+  
+  localStream.getAudioTracks().forEach(track => {
+    track.enabled = !isPaused;
+  });
+  
+  if (isPaused) {
+    pauseBroadcastBtn.innerHTML = '<span>▶️ Resume</span>';
+    broadcastStatus.className = 'status status-paused';
+    broadcastStatusText.textContent = 'Paused';
+  } else {
+    pauseBroadcastBtn.innerHTML = '<span>⏸️ Pause</span>';
+    broadcastStatus.className = 'status status-broadcasting';
+    broadcastStatusText.textContent = 'Broadcasting';
+  }
+}
+
+// Change audio source
+async function changeAudioSource() {
+  try {
+    // Stop current stream
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+    }
+    
+    // Request new screen/tab audio capture
+    localStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
+
+    // Check if audio track exists
+    if (!localStream.getAudioTracks().length) {
+      throw new Error(
+        'No audio track found. Please ensure "Share audio" is checked.'
+      );
+    }
+
+    // Stop the video track
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.stop();
+      localStream.removeTrack(videoTrack);
+    }
+    
+    // Update all peer connections with new stream
+    peerConnections.forEach((pc) => {
+      const senders = pc.getSenders();
+      const audioTrack = localStream.getAudioTracks()[0];
+      const audioSender = senders.find(sender => sender.track?.kind === 'audio');
+      if (audioSender && audioTrack) {
+        audioSender.replaceTrack(audioTrack);
+      }
+    });
+    
+    // Reinitialize visualizer
+    initVisualizer("visualizerBars", localStream);
+    
+    // Reset pause state
+    isPaused = false;
+    pauseBroadcastBtn.innerHTML = '<span>⏸️ Pause</span>';
+    broadcastStatus.className = 'status status-broadcasting';
+    broadcastStatusText.textContent = 'Broadcasting';
+    
+  } catch (error) {
+    alert('Failed to change audio source: ' + error.message);
+  }
+}
+
 // Stop broadcast
 function stopBroadcast() {
   // Stop local stream
@@ -357,6 +529,7 @@ function stopBroadcast() {
   showScreen("home");
   role = null;
   roomCode = null;
+  isPaused = false;
 }
 
 // Leave room (Listener)
@@ -494,4 +667,6 @@ function initVisualizer(containerId, stream) {
 }
 
 // Initialize on load
+loadUserName();
 connectWebSocket();
+checkUrlForRoom();
