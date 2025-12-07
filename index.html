@@ -21,19 +21,6 @@
           Share audio from your Chrome tabs in real-time. Perfect for listening
           to music together!
         </p>
-
-        <!-- Debug log for mobile (can be toggled) -->
-        <div id="debugLog" class="debug-log hidden">
-          <div class="debug-header">
-            <span>📱 Debug Log</span>
-            <div class="debug-actions">
-              <button id="copyDebugBtn" class="debug-copy">Copy</button>
-              <button id="clearDebugBtn" class="debug-clear">Clear</button>
-            </div>
-          </div>
-          <div id="debugContent" class="debug-content"></div>
-        </div>
-        <button id="toggleDebugBtn" class="btn-debug">Show Debug Log</button>
       </header>
 
       <main>
@@ -123,15 +110,14 @@
             </button>
           </div>
 
-          <!-- Mobile autoplay fallback: user may need to tap to enable audio -->
           <div class="controls">
             <button class="btn btn-primary hidden" id="enableAudioBtn">
               🔊 Enable Audio
             </button>
           </div>
 
-          <!-- Hidden audio element for playback. `playsinline` helps mobile autoplay policies. -->
-          <audio id="remoteAudio" autoplay playsinline></audio>
+          <!-- Hidden audio element for playback -->
+          <audio id="remoteAudio" autoplay></audio>
         </div>
       </main>
     </div>

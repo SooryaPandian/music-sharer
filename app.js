@@ -41,12 +41,11 @@ function connectWebSocket() {
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    console.log("Connected to signaling server");
+    // Connected to signaling server
   };
 
   ws.onmessage = async (event) => {
     const data = JSON.parse(event.data);
-    console.log("Received message:", data.type);
 
     switch (data.type) {
       case "room-created":
@@ -78,12 +77,11 @@ function connectWebSocket() {
   };
 
   ws.onclose = () => {
-    console.log("Disconnected from signaling server");
     setTimeout(connectWebSocket, 3000); // Reconnect after 3 seconds
   };
 
   ws.onerror = (error) => {
-    console.error("WebSocket error:", error);
+    // WebSocket error
   };
 }
 
@@ -105,156 +103,12 @@ roomCodeInput.addEventListener("input", (e) => {
   e.target.value = e.target.value.toUpperCase();
 });
 
-// Mobile device detection and UI adaptation
-function isMobileDevice() {
-  return (
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    ) ||
-    (navigator.maxTouchPoints && navigator.maxTouchPoints > 2)
-  );
-}
 
-function adaptUIForDevice() {
-  const isMobile = isMobileDevice();
-
-  if (isMobile) {
-    // Hide create room button on mobile
-    createRoomBtn.style.display = "none";
-
-    // Hide the divider
-    const divider = document.querySelector(".divider");
-    if (divider) divider.style.display = "none";
-
-    // Add helpful message
-    const mobileMessage = document.createElement("p");
-    mobileMessage.style.cssText =
-      "text-align: center; color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem; line-height: 1.5;";
-    mobileMessage.innerHTML =
-      "📱 <strong>Mobile Device Detected</strong><br>Enter a room code to listen to audio from a desktop broadcaster.";
-
-    const homeScreen = document.getElementById("homeScreen");
-    const cardTitle = homeScreen.querySelector(".card-title");
-    cardTitle.after(mobileMessage);
-
-    // Update page title
-    cardTitle.textContent = "Join a Room";
-
-    console.log("📱 Mobile device detected - showing listener-only interface");
-  } else {
-    console.log("🖥️ Desktop device detected - showing full interface");
-  }
-}
-
-// Run adaptation on page load
-adaptUIForDevice();
-
-// Debug logging system for mobile
-const debugLog = document.getElementById("debugLog");
-const debugContent = document.getElementById("debugContent");
-const toggleDebugBtn = document.getElementById("toggleDebugBtn");
-const clearDebugBtn = document.getElementById("clearDebugBtn");
-const copyDebugBtn = document.getElementById("copyDebugBtn");
-
-let debugVisible = false;
-
-function addDebugEntry(message, type = "log") {
-  const timestamp = new Date().toLocaleTimeString();
-  const entry = document.createElement("div");
-  entry.className = `debug-entry ${type}`;
-  entry.innerHTML = `<span class="debug-timestamp">${timestamp}</span>${message}`;
-  debugContent.appendChild(entry);
-  debugContent.scrollTop = debugContent.scrollHeight;
-
-  // Keep only last 50 entries
-  while (debugContent.children.length > 50) {
-    debugContent.removeChild(debugContent.firstChild);
-  }
-}
-
-toggleDebugBtn.addEventListener("click", () => {
-  debugVisible = !debugVisible;
-  debugLog.classList.toggle("hidden");
-  toggleDebugBtn.textContent = debugVisible
-    ? "Hide Debug Log"
-    : "Show Debug Log";
-});
-
-clearDebugBtn.addEventListener("click", () => {
-  debugContent.innerHTML = "";
-  addDebugEntry("Debug log cleared", "log");
-});
-
-copyDebugBtn.addEventListener("click", async () => {
-  // Get all log entries as plain text
-  const entries = Array.from(debugContent.querySelectorAll(".debug-entry"));
-  const logText = entries.map((entry) => entry.textContent).join("\n");
-
-  try {
-    await navigator.clipboard.writeText(logText);
-
-    // Visual feedback
-    const originalText = copyDebugBtn.textContent;
-    copyDebugBtn.textContent = "✓ Copied!";
-    copyDebugBtn.classList.add("copied");
-
-    setTimeout(() => {
-      copyDebugBtn.textContent = originalText;
-      copyDebugBtn.classList.remove("copied");
-    }, 2000);
-
-    addDebugEntry("📋 Log copied to clipboard", "success");
-  } catch (err) {
-    console.error("Failed to copy:", err);
-    addDebugEntry("❌ Failed to copy log", "error");
-
-    // Fallback: show alert with text to manually copy
-    alert("Copy failed. Here is the log:\n\n" + logText);
-  }
-});
-
-// Override console.log and console.error to also log to debug panel
-const originalConsoleLog = console.log;
-const originalConsoleError = console.error;
-
-console.log = function (...args) {
-  originalConsoleLog.apply(console, args);
-  addDebugEntry(args.join(" "), "log");
-};
-
-console.error = function (...args) {
-  originalConsoleError.apply(console, args);
-  addDebugEntry(args.join(" "), "error");
-};
-
-// Add success and warning helpers
-window.debugSuccess = function (message) {
-  console.log("✅ " + message);
-  addDebugEntry("✅ " + message, "success");
-};
-
-window.debugWarning = function (message) {
-  console.log("⚠️ " + message);
-  addDebugEntry("⚠️ " + message, "warning");
-};
-
-// Auto-show debug log on all devices
-debugVisible = true;
-debugLog.classList.remove("hidden");
-toggleDebugBtn.textContent = "Hide Debug Log";
-
-if (isMobileDevice()) {
-  addDebugEntry("📱 Mobile device detected - Debug log enabled", "success");
-} else {
-  addDebugEntry("🖥️ Desktop device detected - Debug log enabled", "success");
-}
 
 // Create Room (Broadcaster)
 async function createRoom() {
-  console.log("Create room clicked - requesting screen share...");
 
   try {
-    console.log("Calling getDisplayMedia with video:true, audio:true");
     // Request screen/tab audio capture
     // Note: Chrome requires video:true even for audio-only capture
     localStream = await navigator.mediaDevices.getDisplayMedia({
@@ -266,10 +120,6 @@ async function createRoom() {
       },
     });
 
-    console.log("Got media stream!");
-    console.log("Audio tracks:", localStream.getAudioTracks().length);
-    console.log("Video tracks:", localStream.getVideoTracks().length);
-
     // Check if audio track exists
     if (!localStream.getAudioTracks().length) {
       throw new Error(
@@ -280,15 +130,9 @@ async function createRoom() {
     // Stop the video track since we only need audio
     const videoTrack = localStream.getVideoTracks()[0];
     if (videoTrack) {
-      console.log("Stopping video track...");
       videoTrack.stop();
       localStream.removeTrack(videoTrack);
     }
-
-    console.log(
-      "After removing video - Audio tracks:",
-      localStream.getAudioTracks().length
-    );
 
     role = "broadcaster";
 
@@ -298,9 +142,6 @@ async function createRoom() {
     // Initialize visualizer
     initVisualizer("visualizerBars", localStream);
   } catch (error) {
-    console.error("Error creating room:", error);
-    console.error("Error name:", error.name);
-    console.error("Error message:", error.message);
 
     if (error.name === "NotAllowedError") {
       alert(
@@ -370,7 +211,6 @@ async function handleNewListener(data) {
   // Handle ICE candidates
   pc.onicecandidate = (event) => {
     if (event.candidate) {
-      console.log("Broadcaster: Sending ICE candidate to listener", listenerId);
       ws.send(
         JSON.stringify({
           type: "ice-candidate",
@@ -383,7 +223,7 @@ async function handleNewListener(data) {
 
   // Monitor connection state
   pc.onconnectionstatechange = () => {
-    console.log(`Broadcaster -> Listener: ${pc.connectionState}`);
+    // Connection state changed
   };
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
@@ -407,7 +247,6 @@ async function handleOffer(data) {
 
   // Handle incoming audio stream
   pc.ontrack = (event) => {
-    console.log("Received remote track");
     remoteAudio.srcObject = event.streams[0];
 
     // Initialize visualizer with remote stream
@@ -417,11 +256,9 @@ async function handleOffer(data) {
     remoteAudio
       .play()
       .then(() => {
-        console.log("Remote audio autoplay succeeded");
         if (enableAudioBtn) enableAudioBtn.classList.add("hidden");
       })
       .catch((err) => {
-        console.warn("Autoplay blocked, showing enable button", err);
         if (enableAudioBtn) enableAudioBtn.classList.remove("hidden");
       });
   };
@@ -429,7 +266,6 @@ async function handleOffer(data) {
   // Handle ICE candidates
   pc.onicecandidate = (event) => {
     if (event.candidate) {
-      console.log("Listener: Sending ICE candidate");
       ws.send(
         JSON.stringify({
           type: "ice-candidate",
@@ -441,14 +277,7 @@ async function handleOffer(data) {
 
   // Handle connection state changes
   pc.onconnectionstatechange = () => {
-    console.log("Listener: Connection state =", pc.connectionState);
     updateListenerStatus(pc.connectionState);
-
-    if (pc.connectionState === "connected") {
-      debugSuccess("Successfully connected to broadcaster!");
-    } else if (pc.connectionState === "failed") {
-      console.error("Listener: Connection failed!");
-    }
   };
 
   // Set remote description and create answer
@@ -486,7 +315,7 @@ async function handleIceCandidate(data) {
     try {
       await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
     } catch (error) {
-      console.error("Error adding ICE candidate:", error);
+      // Error adding ICE candidate
     }
   }
 }
@@ -561,16 +390,13 @@ function leaveRoom() {
   }
 }
 
-// Enable audio button handler (for mobile autoplay policies)
+// Enable audio button handler
 if (enableAudioBtn) {
   enableAudioBtn.addEventListener("click", async () => {
     try {
       await remoteAudio.play();
       enableAudioBtn.classList.add("hidden");
-      addDebugEntry("🔊 Audio enabled by user", "success");
     } catch (err) {
-      console.error("Failed to play audio after user gesture:", err);
-      addDebugEntry("❌ Failed to start audio", "error");
       alert(
         "Unable to start audio playback: " +
           (err && err.message ? err.message : err)
@@ -663,7 +489,7 @@ function initVisualizer(containerId, stream) {
 
     animate();
   } catch (error) {
-    console.error("Visualizer error:", error);
+    // Visualizer error
   }
 }
 

@@ -1,35 +1,10 @@
 const express = require("express");
 const http = require("http");
-const https = require("https");
-const fs = require("fs");
 const WebSocket = require("ws");
 const path = require("path");
 
 const app = express();
-
-// Support optional HTTPS/WSS for LAN/mobile testing.
-// If `SSL_KEY_PATH` and `SSL_CERT_PATH` environment variables are set
-// and point to PEM files, the server will create an HTTPS server
-// and a secure WebSocket (WSS) endpoint. Otherwise it falls back to HTTP/WS.
-let server;
-let usingHttps = false;
-if (process.env.SSL_KEY_PATH && process.env.SSL_CERT_PATH) {
-  try {
-    const key = fs.readFileSync(process.env.SSL_KEY_PATH);
-    const cert = fs.readFileSync(process.env.SSL_CERT_PATH);
-    server = https.createServer({ key, cert }, app);
-    usingHttps = true;
-  } catch (err) {
-    console.error(
-      "Failed to read SSL key/cert, falling back to HTTP:",
-      err.message
-    );
-    server = http.createServer(app);
-  }
-} else {
-  server = http.createServer(app);
-}
-
+const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // Serve static files
@@ -45,12 +20,10 @@ function generateRoomCode() {
 
 // WebSocket connection handler
 wss.on("connection", (ws) => {
-  console.log("New client connected");
 
   ws.on("message", (message) => {
     try {
       const data = JSON.parse(message);
-      console.log("Received:", data.type);
 
       switch (data.type) {
         case "create-room":
@@ -68,20 +41,19 @@ wss.on("connection", (ws) => {
           handleLeaveRoom(ws, data);
           break;
         default:
-          console.log("Unknown message type:", data.type);
+          break;
       }
     } catch (error) {
-      console.error("Error handling message:", error);
+      // Error handling message
     }
   });
 
   ws.on("close", () => {
-    console.log("Client disconnected");
     handleDisconnect(ws);
   });
 
   ws.on("error", (error) => {
-    console.error("WebSocket error:", error);
+    // WebSocket error
   });
 });
 
@@ -104,8 +76,6 @@ function handleCreateRoom(ws, data) {
       roomCode: roomCode,
     })
   );
-
-  console.log(`Room created: ${roomCode}`);
 }
 
 function handleJoinRoom(ws, data) {
@@ -152,8 +122,6 @@ function handleJoinRoom(ws, data) {
       listenerId: getClientId(ws),
     })
   );
-
-  console.log(`Listener joined room: ${roomCode}`);
 }
 
 function handleSignaling(ws, data) {
@@ -209,10 +177,8 @@ function handleLeaveRoom(ws, data) {
     });
     // Delete the room
     rooms.delete(roomCode);
-    console.log(`Room deleted: ${roomCode}`);
   } else if (ws.role === "listener") {
     room.listeners.delete(ws);
-    console.log(`Listener left room: ${roomCode}`);
   }
 }
 
@@ -236,7 +202,6 @@ function handleDisconnect(ws) {
       }
     });
     rooms.delete(roomCode);
-    console.log(`Broadcaster disconnected, room deleted: ${roomCode}`);
   } else if (role === "listener") {
     room.listeners.delete(ws);
   }
@@ -257,7 +222,6 @@ setInterval(() => {
   rooms.forEach((room, roomCode) => {
     if (now - room.createdAt > maxAge) {
       rooms.delete(roomCode);
-      console.log(`Cleaned up old room: ${roomCode}`);
     }
   });
 }, 60 * 60 * 1000);
@@ -266,30 +230,5 @@ const PORT = process.env.PORT || 3000;
 const HOST = "0.0.0.0"; // Listen on all network interfaces
 
 server.listen(PORT, HOST, () => {
-  console.log(`🎵 Music Sharer server running on:`);
-
-  const protocol = usingHttps ? "https" : "http";
-  console.log(`   Local:   ${protocol}://localhost:${PORT}`);
-
-  // Get and display network IP addresses
-  const os = require("os");
-  const networkInterfaces = os.networkInterfaces();
-
-  Object.keys(networkInterfaces).forEach((interfaceName) => {
-    networkInterfaces[interfaceName].forEach((iface) => {
-      // Skip internal and non-IPv4 addresses
-      if (iface.family === "IPv4" && !iface.internal) {
-        console.log(`   Network: ${protocol}://${iface.address}:${PORT}`);
-      }
-    });
-  });
-
-  if (usingHttps) {
-    console.log("\n🔒 HTTPS/WSS enabled. Browsers will use secure context.");
-  } else {
-    console.log("\n📱 Access from other devices using the Network URL above!");
-    console.log(
-      "   Note: Some mobile browsers require HTTPS for certain WebRTC features."
-    );
-  }
+  // Server started
 });
