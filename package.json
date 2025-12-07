@@ -1,0 +1,24 @@
+{
+  "name": "music-sharer",
+  "version": "1.0.0",
+  "description": "Share audio from Chrome tabs in real-time with WebRTC",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "webrtc",
+    "audio",
+    "streaming",
+    "music",
+    "sharing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "ws": "^8.14.2"
+  }
+}
