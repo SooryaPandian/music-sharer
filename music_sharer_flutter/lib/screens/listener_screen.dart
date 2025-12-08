@@ -154,7 +154,15 @@ class _ListenerScreenState extends State<ListenerScreen>
                     return _buildStatusIndicator(webrtc.state);
                   },
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
+
+                // Audio controls (output mode + mute)
+                Consumer<WebRTCService>(
+                  builder: (context, webrtc, _) {
+                    return _buildAudioControls(webrtc);
+                  },
+                ),
+                const SizedBox(height: 24),
 
                 // Audio visualizer
                 Expanded(
@@ -265,6 +273,103 @@ class _ListenerScreenState extends State<ListenerScreen>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildAudioControls(WebRTCService webrtc) {
+    final isMuted = webrtc.isMuted;
+    final isHeadphones = webrtc.isHeadphonesConnected;
+    final audioMode = webrtc.audioOutputMode;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Audio output toggle - shows different options based on headphone connection
+        if (isHeadphones) ...[
+          // When headphones connected, show headphones indicator (no toggle needed)
+          _buildControlButton(
+            icon: Icons.headphones,
+            label: 'Headphones',
+            isActive: true,
+            onPressed: () {}, // No action - headphones are the output
+            isDisabled: true,
+          ),
+        ] else ...[
+          // Speaker/Earpiece toggle when no headphones
+          _buildControlButton(
+            icon: audioMode == AudioOutputMode.speaker ? Icons.volume_up : Icons.phone_in_talk,
+            label: audioMode == AudioOutputMode.speaker ? 'Speaker' : 'Earpiece',
+            isActive: true,
+            onPressed: () => webrtc.toggleAudioOutputMode(),
+          ),
+        ],
+        const SizedBox(width: 16),
+        // Mute toggle
+        _buildControlButton(
+          icon: isMuted ? Icons.volume_off : Icons.volume_up,
+          label: isMuted ? 'Unmute' : 'Mute',
+          isActive: !isMuted,
+          onPressed: () => webrtc.toggleMute(),
+          isDestructive: isMuted,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildControlButton({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onPressed,
+    bool isDestructive = false,
+    bool isDisabled = false,
+  }) {
+    // Disabled state (e.g., headphones indicator) uses green
+    final Color bgColor = isDisabled
+        ? Colors.green.shade700.withAlpha(51)
+        : isDestructive
+            ? Colors.red.shade700.withAlpha(51)
+            : const Color(0xFF6366F1).withAlpha(51);
+    final Color borderColor = isDisabled
+        ? Colors.green.shade400
+        : isDestructive
+            ? Colors.red.shade400
+            : const Color(0xFF6366F1);
+    final Color iconColor = isDisabled
+        ? Colors.green.shade400
+        : isDestructive
+            ? Colors.red.shade400
+            : (isActive ? const Color(0xFF6366F1) : Colors.grey.shade400);
+    final Color textColor = isDisabled
+        ? Colors.green.shade400
+        : isDestructive
+            ? Colors.red.shade400
+            : Colors.white;
+
+    return GestureDetector(
+      onTap: isDisabled ? null : onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: borderColor, width: 1.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: textColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

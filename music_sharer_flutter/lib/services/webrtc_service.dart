@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -11,6 +10,13 @@ enum WebRTCState {
   failed,
 }
 
+/// Audio output mode
+enum AudioOutputMode {
+  speaker,
+  earpiece,
+  headphones,
+}
+
 /// WebRTC service for handling audio streaming
 class WebRTCService extends ChangeNotifier {
   RTCPeerConnection? _peerConnection;
@@ -18,9 +24,14 @@ class WebRTCService extends ChangeNotifier {
   WebRTCState _state = WebRTCState.idle;
   RTCVideoRenderer? _attachedRenderer;
   
-  // Audio level for visualization
-  double _audioLevel = 0.0;
-  Timer? _audioLevelTimer;
+  // Audio output mode (speaker by default)
+  AudioOutputMode _audioOutputMode = AudioOutputMode.speaker;
+  
+  // Mute state
+  bool _isMuted = false;
+  
+  // Headphone connection state
+  bool _isHeadphonesConnected = false;
 
   // ICE server configuration with STUN and TURN (matching web app)
   final Map<String, dynamic> _iceServers = {
@@ -34,7 +45,9 @@ class WebRTCService extends ChangeNotifier {
 
   WebRTCState get state => _state;
   MediaStream? get remoteStream => _remoteStream;
-  double get audioLevel => _audioLevel;
+  AudioOutputMode get audioOutputMode => _audioOutputMode;
+  bool get isMuted => _isMuted;
+  bool get isHeadphonesConnected => _isHeadphonesConnected;
 
   // Callbacks for signaling
   Function(RTCSessionDescription)? onAnswer;
@@ -59,7 +72,6 @@ class WebRTCService extends ChangeNotifier {
         // Enable speakerphone for audio output
         _enableSpeakerphone();
         
-        _startAudioLevelMonitoring();
         notifyListeners();
         // Attach to renderer if one was provided
         if (_attachedRenderer != null) {
@@ -253,39 +265,97 @@ class WebRTCService extends ChangeNotifier {
     }
   }
 
-  /// Start monitoring audio levels for visualization
-  void _startAudioLevelMonitoring() {
-    _audioLevelTimer?.cancel();
-    _audioLevelTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      // Simulate audio level based on connection state
-      // In a real implementation, you'd analyze the audio stream
-      if (_state == WebRTCState.connected && _remoteStream != null) {
-        // Simulate varying audio levels
-        _audioLevel = 0.3 + (DateTime.now().millisecondsSinceEpoch % 500) / 1000;
-      } else {
-        _audioLevel = 0.0;
-      }
-      notifyListeners();
-    });
+  /// Set audio output mode (speaker or earpiece)
+  Future<void> setAudioOutputMode(AudioOutputMode mode) async {
+    _audioOutputMode = mode;
+    try {
+      await Helper.setSpeakerphoneOn(mode == AudioOutputMode.speaker);
+      debugPrint('[WebRTCService] Audio output mode set to: ${mode.name}');
+    } catch (e) {
+      debugPrint('[WebRTCService] Error setting audio output mode: $e');
+    }
+    notifyListeners();
   }
 
-  /// Enable speakerphone for audio output
+  /// Toggle between speaker and earpiece
+  Future<void> toggleAudioOutputMode() async {
+    final newMode = _audioOutputMode == AudioOutputMode.speaker
+        ? AudioOutputMode.earpiece
+        : AudioOutputMode.speaker;
+    await setAudioOutputMode(newMode);
+  }
+
+  /// Toggle mute state
+  void toggleMute() {
+    _isMuted = !_isMuted;
+    _applyMuteState();
+    notifyListeners();
+  }
+
+  /// Apply mute state to the remote stream
+  void _applyMuteState() {
+    if (_remoteStream != null) {
+      for (final track in _remoteStream!.getAudioTracks()) {
+        track.enabled = !_isMuted;
+      }
+      debugPrint('[WebRTCService] Mute state applied: $_isMuted');
+    }
+  }
+
+  /// Check if headphones are connected by enumerating audio output devices
+  Future<void> checkHeadphones() async {
+    try {
+      final devices = await navigator.mediaDevices.enumerateDevices();
+      final audioOutputs = devices.where((d) => d.kind == 'audiooutput').toList();
+      
+      // Check for headphones, bluetooth, or wired headset in device labels
+      _isHeadphonesConnected = audioOutputs.any((device) {
+        final label = device.label.toLowerCase();
+        return label.contains('headphone') ||
+               label.contains('headset') ||
+               label.contains('bluetooth') ||
+               label.contains('airpod') ||
+               label.contains('earphone') ||
+               label.contains('wired');
+      });
+      
+      debugPrint('[WebRTCService] Headphones connected: $_isHeadphonesConnected');
+      
+      // If headphones detected, set audio mode to headphones
+      if (_isHeadphonesConnected) {
+        _audioOutputMode = AudioOutputMode.headphones;
+      }
+      
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[WebRTCService] Error checking headphones: $e');
+      _isHeadphonesConnected = false;
+    }
+  }
+
+  /// Enable appropriate audio output (called on track received)
   Future<void> _enableSpeakerphone() async {
     try {
-      await Helper.setSpeakerphoneOn(true);
-      debugPrint('[WebRTCService] Speakerphone enabled');
+      // Check for headphones first
+      await checkHeadphones();
+      
+      // Only set speakerphone if no headphones connected
+      if (!_isHeadphonesConnected) {
+        await Helper.setSpeakerphoneOn(_audioOutputMode == AudioOutputMode.speaker);
+        debugPrint('[WebRTCService] Speakerphone set to: ${_audioOutputMode == AudioOutputMode.speaker}');
+      } else {
+        // Headphones connected - disable speakerphone to use headphones
+        await Helper.setSpeakerphoneOn(false);
+        debugPrint('[WebRTCService] Using headphones for audio output');
+      }
     } catch (e) {
-      debugPrint('[WebRTCService] Error enabling speakerphone: $e');
+      debugPrint('[WebRTCService] Error setting audio output: $e');
     }
   }
 
   /// Close the peer connection
   Future<void> close() async {
     debugPrint('[WebRTCService] Closing peer connection');
-    
-    _audioLevelTimer?.cancel();
-    _audioLevelTimer = null;
-    _audioLevel = 0.0;
     
     if (_remoteStream != null) {
       _remoteStream!.getTracks().forEach((track) => track.stop());
