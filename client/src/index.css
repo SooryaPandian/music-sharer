@@ -1,0 +1,276 @@
+@import "tailwindcss";
+
+/* Import Inter Font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Custom Theme Configuration for Tailwind CSS 4.1 */
+@layer theme {
+  :root {
+    /* Custom Font Family */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /* Custom Colors */
+    --color-primary: 102 126 234;
+    --color-primary-dark: 118 75 162;
+    --color-secondary: 240 147 251;
+    --color-secondary-dark: 245 87 108;
+    --color-accent: 79 172 254;
+    --color-accent-light: 0 242 254;
+
+    --color-dark-bg: 15 15 35;
+    --color-success: 16 185 129;
+    --color-warning: 245 158 11;
+    --color-error: 239 68 68;
+  }
+}
+
+/* Base Styles */
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background: rgb(var(--color-dark-bg));
+    color: #ffffff;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Animated Background */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+      radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(245, 87, 108, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 40% 20%, rgba(79, 172, 254, 0.1) 0%, transparent 50%);
+    animation: backgroundShift 15s ease infinite;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+/* Custom Component Styles */
+@layer components {
+
+  /* Gradient Classes */
+  .gradient-primary {
+    background: linear-gradient(135deg, rgb(102 126 234) 0%, rgb(118 75 162) 100%);
+  }
+
+  .gradient-secondary {
+    background: linear-gradient(135deg, rgb(240 147 251) 0%, rgb(245 87 108) 100%);
+  }
+
+  .gradient-accent {
+    background: linear-gradient(135deg, rgb(79 172 254) 0%, rgb(0 242 254) 100%);
+  }
+
+  .gradient-text {
+    background: linear-gradient(135deg, rgb(102 126 234) 0%, rgb(118 75 162) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Glass Card Effect */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  /* Button Ripple Effect */
+  .btn-ripple {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-ripple::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+  }
+
+  .btn-ripple:hover::before {
+    width: 300px;
+    height: 300px;
+  }
+
+  /* Visualizer Bar */
+  .visualizer-bar {
+    background: linear-gradient(135deg, rgb(102 126 234) 0%, rgb(118 75 162) 100%);
+    border-radius: 2px;
+    transition: height 0.1s ease;
+    min-height: 4px;
+  }
+
+  /* Room Code Styling */
+  .room-code-text {
+    font-family: 'Monaco', 'Courier New', monospace;
+    text-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+  }
+}
+
+/* Custom Utilities */
+@layer utilities {
+  .shadow-glow {
+    box-shadow: 0 0 30px rgba(102, 126, 234, 0.4);
+  }
+
+  .shadow-glow-hover:hover {
+    box-shadow: 0 0 40px rgba(102, 126, 234, 0.6);
+  }
+}
+
+/* Animations */
+@keyframes backgroundShift {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes pulseStatus {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown 0.8s ease;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s ease;
+}
+
+.animate-pulse-logo {
+  animation: pulse 2s ease infinite;
+}
+
+.animate-pulse-status {
+  animation: pulseStatus 2s ease infinite;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
