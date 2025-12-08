@@ -15,6 +15,9 @@ app.use(express.static(path.join(__dirname)));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
+app.get("/styles.css", (req, res) => {
+  res.sendFile(path.join(__dirname, "style.css"));
+});
 
 app.get("/help", (req, res) => {
   res.send("Help page");
