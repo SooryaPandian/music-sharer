@@ -1,0 +1,24 @@
+name: music_sharer_flutter
+description: "Flutter app to listen to WebRTC audio broadcasts from Music Sharer"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_webrtc: ^0.12.4
+  web_socket_channel: ^3.0.1
+  provider: ^6.1.2
+  shared_preferences: ^2.3.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
