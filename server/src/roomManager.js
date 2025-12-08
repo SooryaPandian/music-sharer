@@ -15,10 +15,10 @@ const rooms = new Map();
 function createRoom(ws) {
   const roomCode = generateRoomCode();
 
-  // Initialize room
+  // Initialize room with listeners as Map
   rooms.set(roomCode, {
     broadcaster: ws,
-    listeners: new Set(),
+    listeners: new Map(), // Changed from Set to Map
     createdAt: Date.now(),
   });
 
@@ -32,9 +32,10 @@ function createRoom(ws) {
  * Add a listener to an existing room
  * @param {WebSocket} ws - Listener's WebSocket connection
  * @param {string} roomCode - Room code to join
+ * @param {string} userName - Listener's display name
  * @returns {Object} Result object with success status and optional error message
  */
-function joinRoom(ws, roomCode) {
+function joinRoom(ws, roomCode, userName) {
   const room = rooms.get(roomCode);
 
   if (!room) {
@@ -51,43 +52,60 @@ function joinRoom(ws, roomCode) {
     };
   }
 
-  // Add listener to room
-  room.listeners.add(ws);
+  // Generate listener ID
+  const { getClientId } = require("./utils");
+  const listenerId = getClientId(ws);
+
+  // Add listener to room with metadata
+  room.listeners.set(ws, {
+    id: listenerId,
+    name: userName || "Anonymous",
+    joinedAt: Date.now(),
+  });
+  
   ws.roomCode = roomCode;
   ws.role = "listener";
 
   return {
     success: true,
     room,
+    listener: {
+      id: listenerId,
+      name: userName || "Anonymous",
+    },
   };
 }
 
 /**
  * Remove a user from a room
  * @param {WebSocket} ws - User's WebSocket connection
+ * @returns {Object} Result with notified listeners and removed listener info
  */
 function leaveRoom(ws) {
   const { roomCode, role } = ws;
 
-  if (!roomCode) return { notifiedListeners: [] };
+  if (!roomCode) return { notifiedListeners: [], removedListener: null };
 
   const room = rooms.get(roomCode);
-  if (!room) return { notifiedListeners: [] };
+  if (!room) return { notifiedListeners: [], removedListener: null };
 
   const notifiedListeners = [];
+  let removedListener = null;
 
   if (role === "broadcaster") {
     // Collect listeners to notify
-    room.listeners.forEach((listener) => {
+    room.listeners.forEach((listenerData, listener) => {
       notifiedListeners.push(listener);
     });
     // Delete the room
     rooms.delete(roomCode);
   } else if (role === "listener") {
+    // Get listener info before removing
+    removedListener = room.listeners.get(ws);
     room.listeners.delete(ws);
   }
 
-  return { notifiedListeners };
+  return { notifiedListeners, removedListener, room };
 }
 
 /**

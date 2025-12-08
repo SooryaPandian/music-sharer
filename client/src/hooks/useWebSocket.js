@@ -28,30 +28,59 @@ export function useWebSocket() {
     const hostname = window.location.hostname;
     const wsUrl = `${protocol}//${hostname}:3000`;
     
+    console.log('[WebSocket] ====== CONNECTING ======');
+    console.log('[WebSocket] URL:', wsUrl);
+    console.log('[WebSocket] Protocol:', protocol);
+    console.log('[WebSocket] Hostname:', hostname);
+    
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     
+    console.log('[WebSocket] WebSocket object created, state:', ws.readyState);
+    
     ws.onopen = () => {
-      console.log("[WebSocket] Connected to signaling server");
+      console.log("[WebSocket] ✓ Connected to signaling server");
+      console.log('[WebSocket] State:', ws.readyState);
     };
     
     ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
+      console.log('[WebSocket] ====== MESSAGE RECEIVED ======');
+      console.log('[WebSocket] Raw data:', event.data);
       
-      // Call registered handler if exists
-      const handler = handlersRef.current[data.type];
-      if (handler) {
-        await handler(data);
+      try {
+        const data = JSON.parse(event.data);
+        console.log('[WebSocket] Parsed message type:', data.type);
+        console.log('[WebSocket] Full message:', data);
+        
+        // Call registered handler if exists
+        const handler = handlersRef.current[data.type];
+        if (handler) {
+          console.log('[WebSocket] Handler found for:', data.type);
+          await handler(data);
+          console.log('[WebSocket] ✓ Handler completed for:', data.type);
+        } else {
+          console.warn('[WebSocket] ✗ No handler registered for:', data.type);
+          console.log('[WebSocket] Available handlers:', Object.keys(handlersRef.current));
+        }
+      } catch (error) {
+        console.error('[WebSocket] ✗ Error processing message:', error);
       }
+      console.log('[WebSocket] ====== END MESSAGE ======');
     };
     
-    ws.onclose = () => {
-      console.log("[WebSocket] Connection closed, reconnecting in 3 seconds...");
+    ws.onclose = (event) => {
+      console.log("[WebSocket] ✗ Connection closed");
+      console.log('[WebSocket] Code:', event.code);
+      console.log('[WebSocket] Reason:', event.reason);
+      console.log('[WebSocket] Clean:', event.wasClean);
+      console.log('[WebSocket] Reconnecting in 3 seconds...');
       setTimeout(connect, 3000);
     };
     
     ws.onerror = (error) => {
-      console.error("[WebSocket] Error:", error);
+      console.error("[WebSocket] ✗ Error occurred");
+      console.error("[WebSocket] Error object:", error);
+      console.error('[WebSocket] State:', ws.readyState);
     };
     
     return ws;
@@ -59,9 +88,24 @@ export function useWebSocket() {
   
   // Send message
   const send = useCallback((data) => {
+    console.log('[WebSocket] ====== SENDING MESSAGE ======');
+    console.log('[WebSocket] Type:', data.type);
+    console.log('[WebSocket] Data:', data);
+    
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(data));
+      const message = JSON.stringify(data);
+      console.log('[WebSocket] Serialized:', message);
+      wsRef.current.send(message);
+      console.log('[WebSocket] ✓ Message sent');
+    } else {
+      console.error('[WebSocket] ✗ Cannot send - WebSocket not open');
+      if (wsRef.current) {
+        console.error('[WebSocket] Current state:', wsRef.current.readyState);
+      } else {
+        console.error('[WebSocket] WebSocket is null');
+      }
     }
+    console.log('[WebSocket] ====== END SEND ======');
   }, [wsRef]);
   
   // Cleanup on unmount

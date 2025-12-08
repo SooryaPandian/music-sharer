@@ -5,7 +5,7 @@ import StatusBadge from './StatusBadge';
 import AudioVisualizer from './AudioVisualizer';
 
 export default function ListenerScreen({ onLeave, audioRef }) {
-    const { roomCode, connectionStatus } = useAppContext();
+    const { roomCode, connectionStatus, listenerCount, listeners } = useAppContext();
     const [stream, setStream] = useState(null);
     const [showEnableAudio, setShowEnableAudio] = useState(false);
 
@@ -77,6 +77,43 @@ export default function ListenerScreen({ onLeave, audioRef }) {
                 <div className="text-4xl font-bold tracking-[0.2em] text-white my-2 room-code-text">
                     {roomCode || '------'}
                 </div>
+
+                {/* Listener Count */}
+                <div className="flex items-center justify-center gap-2 mt-4 text-white/70 text-sm">
+                    <span>👥</span>
+                    <span>{listenerCount}</span>
+                    <span>listeners</span>
+                </div>
+
+                {/* User List */}
+                {listeners && listeners.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-white/10">
+                        <p className="text-xs uppercase tracking-widest text-white/70 font-semibold mb-3 text-center">
+                            In This Room
+                        </p>
+                        <div className="space-y-2 max-h-32 overflow-y-auto">
+                            {listeners.map((listener) => (
+                                <div
+                                    key={listener.id}
+                                    className="flex items-center justify-between px-3 py-2 bg-white/5 rounded-lg"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm">🎧</span>
+                                        <span className="text-sm font-medium text-white">
+                                            {listener.name}
+                                        </span>
+                                    </div>
+                                    <span className="text-xs text-white/50">
+                                        {new Date(listener.joinedAt).toLocaleTimeString([], {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                        })}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Status */}

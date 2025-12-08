@@ -18,6 +18,7 @@ export function AppProvider({ children }) {
     // Broadcast state
     const [isPaused, setIsPaused] = useState(false);
     const [listenerCount, setListenerCount] = useState(0);
+    const [listeners, setListeners] = useState([]); // Array of {id, name, joinedAt}
     const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
     // Modal state
@@ -61,6 +62,7 @@ export function AppProvider({ children }) {
         setRoomCode(null);
         setIsPaused(false);
         setListenerCount(0);
+        setListeners([]);
         setConnectionStatus('disconnected');
         setCurrentScreen('home');
     }, []);
@@ -85,6 +87,8 @@ export function AppProvider({ children }) {
         setIsPaused,
         listenerCount,
         setListenerCount,
+        listeners,
+        setListeners,
         connectionStatus,
         setConnectionStatus,
 
