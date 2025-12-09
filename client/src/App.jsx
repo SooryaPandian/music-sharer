@@ -10,6 +10,7 @@ import HomeScreen from './components/HomeScreen';
 import BroadcasterScreen from './components/BroadcasterScreen';
 import ListenerScreen from './components/ListenerScreen';
 import NameModal from './components/NameModal';
+import ChatBox from './components/ChatBox';
 
 export default function App() {
   const {
@@ -29,6 +30,7 @@ export default function App() {
     closeNameModal,
     pendingAction,
     modalContext,
+    addMessage,
   } = useAppContext();
 
   const { connect, send, registerHandler } = useWebSocket();
@@ -121,6 +123,16 @@ export default function App() {
       }
     });
 
+    registerHandler('chat-message', (data) => {
+      console.log('[App] Handler: chat-message', data);
+      addMessage({
+        senderId: data.senderId,
+        senderName: data.senderName,
+        message: data.message,
+        timestamp: data.timestamp,
+      });
+    });
+
     registerHandler('error', (data) => {
       console.error('[App] Handler: error', data);
       alert(data.message);
@@ -201,10 +213,10 @@ export default function App() {
   }, [setUserName, pendingAction, modalContext, closeNameModal]);
 
   return (
-    <div className="max-w-5xl mx-auto px-8 relative z-10">
+    <div className="max-w-7xl mx-auto px-8 relative z-10">
       <Header />
 
-      <main className="flex justify-center items-start min-h-[60vh]">
+      <main className="flex justify-center items-start min-h-[60vh] gap-8">
         {currentScreen === 'home' && (
           <HomeScreen
             onCreateRoom={handleCreateRoom}
@@ -213,18 +225,40 @@ export default function App() {
         )}
 
         {currentScreen === 'broadcaster' && (
-          <BroadcasterScreen
-            onStop={handleStopBroadcast}
-            onPause={handleTogglePause}
-            onChangeSource={handleChangeSource}
-          />
+          <>
+            <div className="flex-1">
+              <BroadcasterScreen
+                onStop={handleStopBroadcast}
+                onPause={handleTogglePause}
+                onChangeSource={handleChangeSource}
+              />
+            </div>
+            <div className="hidden md:block">
+              <ChatBox />
+            </div>
+            {/* Mobile chat toggle */}
+            <div className="md:hidden">
+              <ChatBox />
+            </div>
+          </>
         )}
 
         {currentScreen === 'listener' && (
-          <ListenerScreen
-            onLeave={handleLeaveRoom}
-            audioRef={audioRef}
-          />
+          <>
+            <div className="flex-1">
+              <ListenerScreen
+                onLeave={handleLeaveRoom}
+                audioRef={audioRef}
+              />
+            </div>
+            <div className="hidden md:block">
+              <ChatBox />
+            </div>
+            {/* Mobile chat toggle */}
+            <div className="md:hidden">
+              <ChatBox />
+            </div>
+          </>
         )}
       </main>
 

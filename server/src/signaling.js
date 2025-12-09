@@ -192,6 +192,49 @@ function handleSignaling(ws, data) {
 }
 
 /**
+ * Handle chat message
+ * @param {WebSocket} ws - WebSocket connection
+ * @param {Object} data - Message data
+ */
+function handleChatMessage(ws, data) {
+  const { roomCode, message, userName } = data;
+  const senderId = getClientId(ws);
+  
+  console.log(`[SIGNALING] Chat message from ${userName} (${senderId}) in room ${roomCode}`);
+  
+  const room = roomManager.getRoom(roomCode);
+  
+  if (!room) {
+    console.error(`[SIGNALING] ✗ Room not found for chat message: ${roomCode}`);
+    return;
+  }
+  
+  const chatMessage = {
+    type: "chat-message",
+    senderId: senderId,
+    senderName: userName,
+    message: message,
+    timestamp: Date.now(),
+  };
+  
+  // Send to broadcaster
+  if (room.broadcaster && room.broadcaster.readyState === WebSocket.OPEN) {
+    room.broadcaster.send(JSON.stringify(chatMessage));
+    console.log(`[SIGNALING] Sent chat message to broadcaster`);
+  }
+  
+  // Send to all listeners
+  for (const [listenerWs, listenerData] of room.listeners) {
+    if (listenerWs.readyState === WebSocket.OPEN) {
+      listenerWs.send(JSON.stringify(chatMessage));
+      console.log(`[SIGNALING] Sent chat message to listener ${listenerData.id}`);
+    }
+  }
+  
+  console.log(`[SIGNALING] ✓ Chat message broadcast complete`);
+}
+
+/**
  * Handle leave room request
  * @param {WebSocket} ws - WebSocket connection
  * @param {Object} data - Message data
@@ -320,6 +363,9 @@ function setupMessageHandlers(ws) {
         case "answer":
         case "ice-candidate":
           handleSignaling(ws, data);
+          break;
+        case "chat-message":
+          handleChatMessage(ws, data);
           break;
         case "leave-room":
           handleLeaveRoom(ws, data);

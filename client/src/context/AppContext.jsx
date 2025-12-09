@@ -21,6 +21,11 @@ export function AppProvider({ children }) {
     const [listeners, setListeners] = useState([]); // Array of {id, name, joinedAt}
     const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
+    // Chat state
+    const [messages, setMessages] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [isChatOpen, setIsChatOpen] = useState(false);
+
     // Modal state
     const [showNameModal, setShowNameModal] = useState(false);
     const [modalContext, setModalContext] = useState(null); // 'create', 'join', 'edit'
@@ -56,6 +61,28 @@ export function AppProvider({ children }) {
         setPendingAction(null);
     }, []);
 
+    // Add chat message
+    const addMessage = useCallback((message) => {
+        setMessages(prev => [...prev, message]);
+        if (!isChatOpen) {
+            setUnreadCount(prev => prev + 1);
+        }
+    }, [isChatOpen]);
+
+    // Clear messages
+    const clearMessages = useCallback(() => {
+        setMessages([]);
+        setUnreadCount(0);
+    }, []);
+
+    // Toggle chat
+    const toggleChat = useCallback(() => {
+        setIsChatOpen(prev => !prev);
+        if (!isChatOpen) {
+            setUnreadCount(0);
+        }
+    }, [isChatOpen]);
+
     // Reset state
     const resetState = useCallback(() => {
         setRole(null);
@@ -65,7 +92,9 @@ export function AppProvider({ children }) {
         setListeners([]);
         setConnectionStatus('disconnected');
         setCurrentScreen('home');
-    }, []);
+        clearMessages();
+        setIsChatOpen(false);
+    }, [clearMessages]);
 
     const value = {
         // Screen
@@ -91,6 +120,15 @@ export function AppProvider({ children }) {
         setListeners,
         connectionStatus,
         setConnectionStatus,
+
+        // Chat
+        messages,
+        addMessage,
+        clearMessages,
+        unreadCount,
+        setUnreadCount,
+        isChatOpen,
+        toggleChat,
 
         // Modal
         showNameModal,
