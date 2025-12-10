@@ -30,8 +30,10 @@ export function useWebRTC() {
   
   // Create room as broadcaster
   const createRoom = useCallback(async () => {
+    console.log('[WebRTC] createRoom called - starting audio capture...');
     try {
       // Request screen/tab audio capture
+      console.log('[WebRTC] Requesting display media...');
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true, // Required by Chrome, but we'll only use the audio
         audio: {
@@ -41,26 +43,40 @@ export function useWebRTC() {
         },
       });
       
+      console.log('[WebRTC] Display media received, stream:', stream);
+      
       // Check if audio track exists
-      if (!stream.getAudioTracks().length) {
+      const audioTracks = stream.getAudioTracks();
+      console.log('[WebRTC] Audio tracks count:', audioTracks.length);
+      
+      if (!audioTracks.length) {
         throw new Error('No audio track found. Please ensure "Share audio" is checked.');
       }
       
       // Stop the video track since we only need audio
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack) {
+        console.log('[WebRTC] Stopping video track...');
         videoTrack.stop();
         stream.removeTrack(videoTrack);
       }
       
+      console.log('[WebRTC] Setting localStreamRef...');
       localStreamRef.current = stream;
+      console.log('[WebRTC] Setting role to broadcaster...');
       setRole("broadcaster");
       
       // Send create room request
+      console.log('[WebRTC] Sending create-room message to server...');
       send({ type: "create-room" });
+      console.log('[WebRTC] ✓ createRoom completed successfully');
       
       return stream;
     } catch (error) {
+      console.error('[WebRTC] ✗ createRoom failed:', error);
+      console.error('[WebRTC] Error name:', error.name);
+      console.error('[WebRTC] Error message:', error.message);
+      
       if (error.name === "NotAllowedError") {
         alert('Permission denied. Please click "Share" when the browser asks to share your screen.');
       } else if (error.name === "NotFoundError") {
@@ -74,7 +90,7 @@ export function useWebRTC() {
       }
       throw error;
     }
-  }, [localStreamRef, setRole, send]);
+  }, [setRole, send]); // Removed localStreamRef - refs are stable
   
   // Join room as listener
   const joinRoom = useCallback((code) => {
@@ -96,44 +112,100 @@ export function useWebRTC() {
   // Handle new listener (Broadcaster side)
   const handleNewListener = useCallback(async (listenerId) => {
     console.log(`[Broadcaster] New listener connected: ${listenerId}`);
-    
-    // Create new peer connection for this listener
-    const pc = new RTCPeerConnection(iceServers);
-    peerConnectionsRef.current.set(listenerId, pc);
-    
-    // Add ONLY audio tracks to peer connection
-    const localStream = localStreamRef.current;
-    if (localStream) {
-      localStream.getAudioTracks().forEach((track) => {
-        console.log(`[Broadcaster] Adding audio track for ${listenerId}`);
-        pc.addTrack(track, localStream);
-      });
-    }
-    
-    // Handle ICE candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        send({
-          type: "ice-candidate",
-          targetId: listenerId,
-          candidate: event.candidate,
-        });
-      }
-    };
-    
-    // Create offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    
-    send({
-      type: "offer",
-      targetId: listenerId,
-      offer: offer,
+    console.log(`[Broadcaster] 🔍 STREAM DIAGNOSTIC:`, {
+      'localStreamRef exists': !!localStreamRef,
+      'localStreamRef.current exists': !!localStreamRef.current,
+      'localStreamRef.current value': localStreamRef.current
     });
     
-    // Update listener count
-    setListenerCount(peerConnectionsRef.current.size);
-  }, [localStreamRef, peerConnectionsRef, send, setListenerCount]);
+    try {
+      // Create new peer connection for this listener
+      console.log(`[Broadcaster] Creating peer connection for ${listenerId}`);
+      const pc = new RTCPeerConnection(iceServers);
+      peerConnectionsRef.current.set(listenerId, pc);
+      console.log(`[Broadcaster] Peer connection created successfully`);
+      
+      //Add ONLY audio tracks to peer connection
+      const localStream = localStreamRef.current;
+      
+      console.log(`[Broadcaster] 🔍 Local stream check:`, {
+        'stream object': localStream,
+        'stream is null': localStream === null,
+        'stream is undefined': localStream === undefined
+      });
+      
+      if (!localStream) {
+        console.error(`[Broadcaster] ✗ No local stream available!`);
+        console.error(`[Broadcaster] Cannot connect to listener ${listenerId} - no stream to share`);
+        console.error(`[Broadcaster] 🔍 localStreamRef:`, localStreamRef);
+        console.error(`[Broadcaster] 🔍 localStreamRef.current:`, localStreamRef.current);
+        return;
+      }
+      
+      console.log(`[Broadcaster] ✓ Local stream exists`);
+      console.log(`[Broadcaster] Stream ID:`, localStream.id);
+      console.log(`[Broadcaster] Stream active:`, localStream.active);
+      
+      const audioTracks = localStream.getAudioTracks();
+      console.log(`[Broadcaster] Local stream has ${audioTracks.length} audio track(s)`);
+      
+      if (audioTracks.length === 0) {
+        console.error(`[Broadcaster] ✗ No audio tracks in stream!`);
+        console.error(`[Broadcaster] Cannot connect to listener ${listenerId} - no audio to share`);
+        return;
+      }
+      
+      audioTracks.forEach((track, index) => {
+        console.log(`[Broadcaster] Audio track ${index}:`, {
+          id: track.id,
+          label: track.label,
+          kind: track.kind,
+          enabled: track.enabled,
+          muted: track.muted,
+          readyState: track.readyState
+        });
+        console.log(`[Broadcaster] Adding audio track for ${listenerId}`, track);
+        pc.addTrack(track, localStream);
+      });
+      console.log(`[Broadcaster] ✓ All audio tracks added to peer connection`);
+      
+      // Handle ICE candidates
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log(`[Broadcaster] Sending ICE candidate to ${listenerId}`);
+          send({
+            type: "ice-candidate",
+            targetId: listenerId,
+            candidate: event.candidate,
+          });
+        }
+      };
+      
+      // Create offer
+      console.log(`[Broadcaster] Creating offer for ${listenerId}...`);
+      const offer = await pc.createOffer();
+      console.log(`[Broadcaster] ✓ Offer created successfully`);
+      
+      console.log(`[Broadcaster] Setting local description...`);
+      await pc.setLocalDescription(offer);
+      console.log(`[Broadcaster] ✓ Local description set`);
+      
+      console.log(`[Broadcaster] Sending offer to ${listenerId}...`);
+      send({
+        type: "offer",
+        targetId: listenerId,
+        offer: offer,
+      });
+      console.log(`[Broadcaster] ✓ Offer sent successfully to ${listenerId}`);
+      
+      // Update listener count
+      setListenerCount(peerConnectionsRef.current.size);
+    } catch (error) {
+      console.error(`[Broadcaster] ✗ Error handling new listener ${listenerId}:`, error);
+      console.error(`[Broadcaster] Error stack:`, error.stack);
+      alert(`Failed to connect to listener: ${error.message}`);
+    }
+  }, [send, setListenerCount]); // Removed localStreamRef and peerConnectionsRef - refs are stable and shouldn't be dependencies
   
   // Handle offer from broadcaster (Listener side)
   const handleOffer = useCallback(async (data, audioRef, onAudioReady) => {
@@ -187,7 +259,7 @@ export function useWebRTC() {
       type: "answer",
       answer: answer,
     });
-  }, [peerConnectionsRef, send, setConnectionStatus]);
+  }, [send,  ]); // Removed peerConnectionsRef - refs are stable
   
   // Handle answer from listener (Broadcaster side)
   const handleAnswer = useCallback(async (data) => {
@@ -195,7 +267,7 @@ export function useWebRTC() {
     if (pc) {
       await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
     }
-  }, [peerConnectionsRef]);
+  }, []); // Removed peerConnectionsRef - refs are stable
   
   // Handle ICE candidate
   const handleIceCandidate = useCallback(async (data, currentRole) => {
@@ -214,7 +286,7 @@ export function useWebRTC() {
         console.error(`[${currentRole}] Error adding ICE candidate:`, error);
       }
     }
-  }, [peerConnectionsRef]);
+  }, []); // Removed peerConnectionsRef - refs are stable
   
   // Toggle pause
   const togglePause = useCallback(() => {
@@ -227,7 +299,7 @@ export function useWebRTC() {
     localStream.getAudioTracks().forEach((track) => {
       track.enabled = !newPausedState;
     });
-  }, [localStreamRef, isPaused, setIsPaused]);
+  }, [isPaused, setIsPaused]); // Removed localStreamRef - refs are stable
   
   // Change audio source
   const changeAudioSource = useCallback(async () => {
@@ -280,7 +352,7 @@ export function useWebRTC() {
       alert("Failed to change audio source: " + error.message);
       throw error;
     }
-  }, [localStreamRef, peerConnectionsRef, setIsPaused]);
+  }, [setIsPaused]); // Removed localStreamRef and peerConnectionsRef - refs are stable
   
   // Stop broadcast
   const stopBroadcast = useCallback(() => {
@@ -303,7 +375,7 @@ export function useWebRTC() {
     
     // Reset state
     resetState();
-  }, [localStreamRef, peerConnectionsRef, roomCode, send, resetState]);
+  }, [roomCode, send, resetState]); // Removed localStreamRef and peerConnectionsRef - refs are stable
   
   // Leave room as listener
   const leaveRoom = useCallback((audioRef) => {
@@ -327,7 +399,7 @@ export function useWebRTC() {
     
     // Reset state
     resetState();
-  }, [peerConnectionsRef, roomCode, send, resetState]);
+  }, [roomCode, send, resetState]); // Removed peerConnectionsRef - refs are stable
   
   return {
     createRoom,

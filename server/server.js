@@ -4,6 +4,7 @@ const WebSocket = require("ws");
 const path = require("path");
 const { setupMessageHandlers } = require("./src/signaling");
 const { cleanupOldRooms } = require("./src/roomManager");
+const config = require("./src/config");
 
 const app = express();
 const server = http.createServer(app);
@@ -41,18 +42,16 @@ wss.on("connection", (ws, req) => {
   setupMessageHandlers(ws);
 });
 
-// Clean up old rooms (runs every hour)
+// Clean up abandoned rooms (runs periodically)
 setInterval(() => {
-  const cleanedCount = cleanupOldRooms(24 * 60 * 60 * 1000); // 24 hours
+  const cleanedCount = cleanupOldRooms(config.ROOM_PERSISTENCE_TIMEOUT);
   if (cleanedCount > 0) {
-    console.log(`Cleaned up ${cleanedCount} old room(s)`);
+    console.log(`[SERVER] Cleaned up ${cleanedCount} abandoned room(s)`);
   }
-}, 60 * 60 * 1000);
+}, config.CLEANUP_INTERVAL);
 
-const PORT = process.env.PORT || 3000;
-const HOST = "0.0.0.0"; // Listen on all network interfaces
-
-server.listen(PORT, HOST, () => {
-  console.log(`Music Sharer server running on http://${HOST}:${PORT}`);
+server.listen(config.PORT, config.HOST, () => {
+  console.log(`[SERVER] Music Sharer server running on http://${config.HOST}:${config.PORT}`);
+  console.log(`[SERVER] Room persistence timeout: ${config.ROOM_PERSISTENCE_TIMEOUT / 1000 / 60} minutes`);
 });
  

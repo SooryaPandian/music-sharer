@@ -52,6 +52,14 @@ export default function App() {
   const audioRef = useRef(null);
   const roomCodeInputRef = useRef('');
 
+  // Keep track of current role in a ref for handlers to access
+  const roleRef = useRef(role);
+
+  // Update roleRef whenever role changes
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
+
   // Initialize WebSocket and register handlers
   useEffect(() => {
     console.log('[App] Initializing WebSocket handlers...');
@@ -101,7 +109,8 @@ export default function App() {
 
     registerHandler('ice-candidate', async (data) => {
       console.log('[App] Handler: ice-candidate', data);
-      await handleIceCandidate(data, role);
+      console.log('[App] Current role:', roleRef.current);
+      await handleIceCandidate(data, roleRef.current);
     });
 
     registerHandler('broadcaster-left', () => {
@@ -140,8 +149,12 @@ export default function App() {
       setCurrentScreen('home');
     });
 
+    console.log('[App] Handlers registered successfully');
+  }, [registerHandler, handleNewListener, handleOffer, handleAnswer, handleIceCandidate, addMessage]);
+
+  // Initialize WebSocket connection once on mount
+  useEffect(() => {
     console.log('[App] Connecting to WebSocket...');
-    // Connect to signaling server
     connect();
 
     // Check URL for room code
@@ -155,13 +168,6 @@ export default function App() {
       });
     }
   }, []);
-
-  // Update ICE candidate handler when role changes
-  useEffect(() => {
-    registerHandler('ice-candidate', async (data) => {
-      await handleIceCandidate(data, role);
-    });
-  }, [role, registerHandler, handleIceCandidate]);
 
   // Handle create room
   const handleCreateRoom = useCallback(async () => {
