@@ -11,6 +11,7 @@ import BroadcasterScreen from './components/BroadcasterScreen';
 import ListenerScreen from './components/ListenerScreen';
 import NameModal from './components/NameModal';
 import ChatBox from './components/ChatBox';
+import Sidebar from './components/Sidebar';
 
 export default function App() {
   const {
@@ -213,54 +214,52 @@ export default function App() {
   }, [setUserName, pendingAction, modalContext, closeNameModal]);
 
   return (
-    <div className="max-w-7xl mx-auto px-8 relative z-10">
+    <div className="h-screen flex flex-col overflow-hidden">
       <Header />
 
-      <main className="flex justify-center items-start min-h-[60vh] gap-8">
-        {currentScreen === 'home' && (
+      {currentScreen === 'home' ? (
+        <main className="flex-1 flex justify-center items-center px-8">
           <HomeScreen
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}
           />
-        )}
+        </main>
+      ) : (
+        <main className="flex-1 grid grid-cols-1 md:grid-cols-[320px_1fr_320px] gap-6 px-8 pb-8 overflow-hidden">
+          {/* Left Sidebar - Desktop Only */}
+          <div className="hidden md:block overflow-hidden">
+            <Sidebar />
+          </div>
 
-        {currentScreen === 'broadcaster' && (
-          <>
-            <div className="flex-1">
+          {/* Middle Content */}
+          <div className="overflow-auto custom-scrollbar">
+            {currentScreen === 'broadcaster' && (
               <BroadcasterScreen
                 onStop={handleStopBroadcast}
                 onPause={handleTogglePause}
                 onChangeSource={handleChangeSource}
               />
-            </div>
-            <div className="hidden md:block">
-              <ChatBox />
-            </div>
-            {/* Mobile chat toggle */}
-            <div className="md:hidden">
-              <ChatBox />
-            </div>
-          </>
-        )}
+            )}
 
-        {currentScreen === 'listener' && (
-          <>
-            <div className="flex-1">
+            {currentScreen === 'listener' && (
               <ListenerScreen
                 onLeave={handleLeaveRoom}
                 audioRef={audioRef}
               />
-            </div>
-            <div className="hidden md:block">
-              <ChatBox />
-            </div>
-            {/* Mobile chat toggle */}
-            <div className="md:hidden">
-              <ChatBox />
-            </div>
-          </>
-        )}
-      </main>
+            )}
+          </div>
+
+          {/* Right Chat - Desktop, Mobile Toggle */}
+          <div className="hidden md:block overflow-hidden">
+            <ChatBox />
+          </div>
+
+          {/* Mobile Chat Toggle */}
+          <div className="md:hidden">
+            <ChatBox />
+          </div>
+        </main>
+      )}
 
       <NameModal onSave={handleSaveName} />
     </div>

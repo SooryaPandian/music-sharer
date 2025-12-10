@@ -5,7 +5,7 @@ import StatusBadge from './StatusBadge';
 import AudioVisualizer from './AudioVisualizer';
 
 export default function ListenerScreen({ onLeave, audioRef }) {
-    const { roomCode, connectionStatus, listenerCount, listeners } = useAppContext();
+    const { roomCode, connectionStatus } = useAppContext();
     const [stream, setStream] = useState(null);
     const [showEnableAudio, setShowEnableAudio] = useState(false);
 
@@ -64,71 +64,36 @@ export default function ListenerScreen({ onLeave, audioRef }) {
     }, [audioRef]);
 
     return (
-        <div className="glass-card rounded-2xl p-12 shadow-2xl animate-fade-in-up transition-all duration-300 w-full max-w-lg hover:-translate-y-1 hover:shadow-2xl hover:shadow-glow">
+        <div className="glass-card rounded-2xl p-8 h-full flex flex-col">
             <h2 className="text-2xl font-semibold mb-6 text-center">
                 Listening
             </h2>
 
-            {/* Room Info */}
+            {/* Room Code */}
             <div className="bg-white/5 border border-white/10 rounded-xl p-6 mb-6 text-center">
                 <p className="text-xs uppercase tracking-widest text-white/70 font-semibold">
                     Room Code
                 </p>
-                <div className="text-4xl font-bold tracking-[0.2em] text-white my-2 room-code-text">
+                <div className="text-4xl font-bold tracking-[0.2em] text-white my-3 room-code-text">
                     {roomCode || '------'}
                 </div>
-
-                {/* Listener Count */}
-                <div className="flex items-center justify-center gap-2 mt-4 text-white/70 text-sm">
-                    <span>👥</span>
-                    <span>{listenerCount}</span>
-                    <span>listeners</span>
-                </div>
-
-                {/* User List */}
-                {listeners && listeners.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-white/10">
-                        <p className="text-xs uppercase tracking-widest text-white/70 font-semibold mb-3 text-center">
-                            In This Room
-                        </p>
-                        <div className="space-y-2 max-h-32 overflow-y-auto">
-                            {listeners.map((listener) => (
-                                <div
-                                    key={listener.id}
-                                    className="flex items-center justify-between px-3 py-2 bg-white/5 rounded-lg"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm">🎧</span>
-                                        <span className="text-sm font-medium text-white">
-                                            {listener.name}
-                                        </span>
-                                    </div>
-                                    <span className="text-xs text-white/50">
-                                        {new Date(listener.joinedAt).toLocaleTimeString([], {
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                        })}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
 
             {/* Status */}
-            <div className="text-center">
+            <div className="text-center mb-6">
                 <StatusBadge status={connectionStatus} />
             </div>
 
             {/* Audio Visualizer */}
-            <AudioVisualizer bars={bars} />
+            <div className="mb-6">
+                <AudioVisualizer bars={bars} />
+            </div>
 
             {/* Controls */}
-            <div className="flex flex-col gap-4 mt-6">
+            <div className="flex flex-col gap-3 mt-auto">
                 <button
                     onClick={onLeave}
-                    className="w-full py-4 px-8 border border-white/20 rounded-lg text-base font-semibold cursor-pointer transition-all uppercase tracking-wider bg-white/10 text-white hover:bg-white/15 hover:border-white/30 btn-ripple relative overflow-hidden"
+                    className="w-full py-3 px-6 border border-white/20 rounded-lg text-base font-semibold cursor-pointer transition-all uppercase tracking-wider bg-white/10 text-white hover:bg-white/15 hover:border-white/30 btn-ripple relative overflow-hidden"
                 >
                     <span className="relative z-10">🚪 Leave Room</span>
                 </button>
@@ -136,10 +101,10 @@ export default function ListenerScreen({ onLeave, audioRef }) {
 
             {/* Enable Audio Button (for autoplay policy bypass) */}
             {showEnableAudio && (
-                <div className="flex flex-col gap-4 mt-4">
+                <div className="flex flex-col gap-3 mt-3">
                     <button
                         onClick={handleEnableAudio}
-                        className="w-full py-4 px-8 border-none rounded-lg text-base font-semibold cursor-pointer transition-all uppercase tracking-wider gradient-primary text-white shadow-[0_4px_15px_rgba(102,126,234,0.4)] hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(102,126,234,0.6)] btn-ripple relative overflow-hidden"
+                        className="w-full py-3 px-6 border-none rounded-lg text-base font-semibold cursor-pointer transition-all uppercase tracking-wider gradient-primary text-white shadow-[0_4px_15px_rgba(102,126,234,0.4)] hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(102,126,234,0.6)] btn-ripple relative overflow-hidden"
                     >
                         <span className="relative z-10">🔊 Enable Audio</span>
                     </button>

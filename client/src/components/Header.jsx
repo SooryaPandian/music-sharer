@@ -1,40 +1,22 @@
 import { useAppContext } from '../context/AppContext';
-import { useUserName } from '../hooks/useUserName';
 
 export default function Header() {
-    const { userName } = useAppContext();
-    const { openNameModal } = useUserName();
+    const { userName, currentScreen } = useAppContext();
 
     return (
-        <header className="text-center py-12 pb-8 animate-fade-in-down">
-            {/* Logo */}
-            <div className="inline-flex items-center gap-4 mb-6">
-                <span className="text-5xl drop-shadow-[0_0_20px_rgba(102,126,234,0.6)] animate-pulse-logo">
-                    🎵
-                </span>
-            </div>
+        <header className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
+            <div className="px-8 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <span className="text-2xl">🎵</span>
+                    <h1 className="text-xl font-bold gradient-text">Music Sharer</h1>
+                </div>
 
-            {/* Title */}
-            <h1 className="text-5xl font-bold gradient-text tracking-tight mb-2">
-                Music Sharer
-            </h1>
-
-            {/* Subtitle */}
-            <p className="text-lg text-white/70 max-w-xl mx-auto">
-                Share audio from your Chrome tabs in real-time. Perfect for listening to music together!
-            </p>
-
-            {/* User Info */}
-            <div className="flex items-center justify-center gap-4 mt-6 p-4 bg-white/5 rounded-lg max-w-xs mx-auto">
-                <span className="font-semibold text-white">
-                    {userName || 'Guest'}
-                </span>
-                <button
-                    onClick={() => openNameModal('edit')}
-                    className="bg-transparent border-none text-white/70 cursor-pointer p-2 text-sm transition-colors hover:text-white"
-                >
-                    ✏️ Edit Name
-                </button>
+                {(currentScreen === 'broadcaster' || currentScreen === 'listener') && userName && (
+                    <div className="flex items-center gap-2 text-sm text-white/70">
+                        <span>👤</span>
+                        <span>{userName}</span>
+                    </div>
+                )}
             </div>
         </header>
     );

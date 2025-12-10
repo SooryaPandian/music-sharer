@@ -1,46 +1,64 @@
 import { useState } from 'react';
-import { useUserName } from '../hooks/useUserName';
+import { useAppContext } from '../context/AppContext';
 
 export default function HomeScreen({ onCreateRoom, onJoinRoom }) {
-    const [roomCode, setRoomCode] = useState('');
-    const { openNameModal } = useUserName();
+    const { userName, openNameModal } = useAppContext();
+    const [roomCodeInput, setRoomCodeInput] = useState('');
 
-    const handleCreate = () => {
-        openNameModal('create', () => {
+    const handleCreateClick = () => {
+        if (!userName) {
+            openNameModal('create', () => {
+                onCreateRoom();
+            });
+        } else {
             onCreateRoom();
-        });
+        }
     };
 
-    const handleJoin = () => {
-        if (roomCode.length !== 6) {
-            alert("Please enter a valid 6-character room code");
+    const handleJoinClick = () => {
+        if (!roomCodeInput.trim()) {
+            alert('Please enter a room code');
             return;
         }
-        openNameModal('join', () => {
-            onJoinRoom(roomCode);
-        });
+
+        // Removed the 6-character length check as per the provided edit,
+        // but it might be good to re-add if the backend expects it.
+        // if (roomCodeInput.trim().length !== 6) {
+        //     alert("Please enter a valid 6-character room code");
+        //     return;
+        // }
+
+        if (!userName) {
+            openNameModal('join', () => {
+                onJoinRoom(roomCodeInput.trim());
+            });
+        } else {
+            onJoinRoom(roomCodeInput.trim());
+        }
     };
 
     const handleRoomCodeChange = (e) => {
-        setRoomCode(e.target.value.toUpperCase());
+        setRoomCodeInput(e.target.value.toUpperCase());
     };
 
     const handleKeyPress = (e) => {
         if (e.key === 'Enter') {
-            handleJoin();
+            handleJoinClick();
         }
     };
 
     return (
         <div className="glass-card rounded-2xl p-12 shadow-2xl animate-fade-in-up transition-all duration-300 w-full max-w-lg hover:-translate-y-1 hover:shadow-2xl hover:shadow-glow">
-            <h2 className="text-2xl font-semibold mb-6 text-center">
-                Get Started
-            </h2>
+            <div className="text-center mb-8">
+                <p className="text-lg text-white/70">
+                    Choose an option to get started
+                </p>
+            </div>
 
             <div className="flex flex-col gap-4">
                 {/* Create Room Button */}
                 <button
-                    onClick={handleCreate}
+                    onClick={handleCreateClick}
                     className="w-full py-4 px-8 border-none rounded-lg text-base font-semibold cursor-pointer transition-all uppercase tracking-wider gradient-primary text-white shadow-[0_4px_15px_rgba(102,126,234,0.4)] hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(102,126,234,0.6)] btn-ripple relative overflow-hidden"
                 >
                     <span className="relative z-10">🎙️ Create Room & Share Audio</span>
@@ -60,7 +78,7 @@ export default function HomeScreen({ onCreateRoom, onJoinRoom }) {
                     </label>
                     <input
                         type="text"
-                        value={roomCode}
+                        value={roomCodeInput}
                         onChange={handleRoomCodeChange}
                         onKeyPress={handleKeyPress}
                         placeholder="Enter room code"
@@ -72,7 +90,7 @@ export default function HomeScreen({ onCreateRoom, onJoinRoom }) {
 
                 {/* Join Room Button */}
                 <button
-                    onClick={handleJoin}
+                    onClick={handleJoinClick}
                     className="w-full py-4 px-8 border border-white/20 rounded-lg text-base font-semibold cursor-pointer transition-all uppercase tracking-wider bg-white/10 text-white hover:bg-white/15 hover:border-white/30 btn-ripple relative overflow-hidden"
                 >
                     <span className="relative z-10">🎧 Join Room</span>

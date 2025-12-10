@@ -3,7 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import { useChat } from '../hooks/useChat';
 
 export default function ChatBox() {
-    const { messages, unreadCount, isChatOpen, toggleChat, userName } = useAppContext();
+    const { messages, unreadCount, isChatOpen, toggleChat, userName, currentScreen } = useAppContext();
     const { sendMessage } = useChat();
     const [inputValue, setInputValue] = useState('');
     const messagesEndRef = useRef(null);
@@ -46,38 +46,39 @@ export default function ChatBox() {
 
     return (
         <>
-            {/* Chat Toggle Button - Mobile */}
-            <button
-                onClick={toggleChat}
-                className="md:hidden fixed bottom-6 right-6 z-50 w-14 h-14 gradient-primary rounded-full shadow-glow flex items-center justify-center text-white hover:shadow-glow-hover transition-all duration-300"
-                aria-label="Toggle chat"
-            >
-                <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+            {/* Chat Toggle Button - Mobile Only (hidden on desktop in 3-column view) */}
+            {(currentScreen === 'broadcaster' || currentScreen === 'listener') && (
+                <button
+                    onClick={toggleChat}
+                    className="md:hidden fixed bottom-6 right-6 z-50 w-14 h-14 gradient-primary rounded-full shadow-glow flex items-center justify-center text-white hover:shadow-glow-hover transition-all duration-300"
+                    aria-label="Toggle chat"
                 >
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                </svg>
-                {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold animate-pulse-status">
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                )}
-            </button>
+                    <svg
+                        className="w-6 h-6"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                        />
+                    </svg>
+                    {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold animate-pulse-status">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                    )}
+                </button>
+            )}
 
             {/* Chat Container */}
             <div
                 className={`
-                    glass-card rounded-2xl flex flex-col overflow-hidden
-                    md:relative md:block md:w-80 md:h-[600px]
-                    ${isChatOpen ? 'fixed inset-4 z-40 flex' : 'hidden md:flex'}
+                    glass-card rounded-2xl flex flex-col overflow-hidden h-full
+                    ${isChatOpen ? 'fixed inset-4 z-40 flex md:relative md:inset-auto' : 'hidden md:flex'}
                 `}
             >
                 {/* Chat Header */}
@@ -105,7 +106,7 @@ export default function ChatBox() {
                 </div>
 
                 {/* Messages Area */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar min-h-0">
                     {messages.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-gray-400 text-sm text-center px-4">
                             No messages yet. Start the conversation!

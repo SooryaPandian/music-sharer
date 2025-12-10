@@ -24,9 +24,16 @@ export function useWebSocket() {
   
   // Connect to WebSocket
   const connect = useCallback(() => {
+    // Use fixed dev tunnel URL for WebSocket signaling
+    // Provided URL: https://j6wt9thk-3000.inc1.devtunnels.ms/
+    // Convert to secure WebSocket (wss)
+    // const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    // const hostname = window.location.hostname;
+    // const wsUrl = `${protocol}//${hostname}:3000`;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const hostname = window.location.hostname;
-    const wsUrl = `${protocol}//${hostname}:3000`;
+    const hostname = "j6wt9thk-3000.inc1.devtunnels.ms";
+    // https://j6wt9thk-3000.inc1.devtunnels.ms/
+    const wsUrl = 'wss://j6wt9thk-3000.inc1.devtunnels.ms/';
     
     console.log('[WebSocket] ====== CONNECTING ======');
     console.log('[WebSocket] URL:', wsUrl);
