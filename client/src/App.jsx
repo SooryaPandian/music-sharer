@@ -1,9 +1,10 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useWebRTC } from './hooks/useWebRTC';
 import { useUserName } from './hooks/useUserName';
 import { getRoomFromUrl } from './utils/helpers';
+import { waitForServerReady } from './utils/healthCheck';
 
 import Header from './components/Header';
 import HomeScreen from './components/HomeScreen';
@@ -12,6 +13,7 @@ import ListenerScreen from './components/ListenerScreen';
 import NameModal from './components/NameModal';
 import ChatBox from './components/ChatBox';
 import Sidebar from './components/Sidebar';
+import ServerStatus from './components/ServerStatus';
 
 export default function App() {
   const {
@@ -51,6 +53,10 @@ export default function App() {
 
   const audioRef = useRef(null);
   const roomCodeInputRef = useRef('');
+
+  // Server availability state
+  const [serverStatus, setServerStatus] = useState('checking'); // 'checking', 'ready', 'error'
+  const [elapsedTime, setElapsedTime] = useState(0);
 
   // Keep track of current role in a ref for handlers to access
   const roleRef = useRef(role);
@@ -152,22 +158,47 @@ export default function App() {
     console.log('[App] Handlers registered successfully');
   }, [registerHandler, handleNewListener, handleOffer, handleAnswer, handleIceCandidate, addMessage]);
 
-  // Initialize WebSocket connection once on mount
-  useEffect(() => {
-    console.log('[App] Connecting to WebSocket...');
-    connect();
+  // Check server health and initialize WebSocket connection once on mount
+  const initializeConnection = useCallback(async () => {
+    try {
+      setServerStatus('checking');
+      console.log('[App] Checking server health...');
 
-    // Check URL for room code
-    const urlRoomCode = checkUrlForRoom();
-    if (urlRoomCode) {
-      console.log('[App] Room code found in URL:', urlRoomCode);
-      roomCodeInputRef.current = urlRoomCode;
-      // Show join modal
-      openNameModal('join', (context) => {
-        joinRoom(urlRoomCode);
+      // Wait for server to be ready
+      await waitForServerReady((elapsed) => {
+        setElapsedTime(elapsed);
       });
+
+      console.log('[App] Server is ready, connecting to WebSocket...');
+      setServerStatus('ready');
+
+      // Connect to WebSocket
+      connect();
+
+      // Check URL for room code
+      const urlRoomCode = checkUrlForRoom();
+      if (urlRoomCode) {
+        console.log('[App] Room code found in URL:', urlRoomCode);
+        roomCodeInputRef.current = urlRoomCode;
+        // Show join modal
+        openNameModal('join', (context) => {
+          joinRoom(urlRoomCode);
+        });
+      }
+    } catch (error) {
+      console.error('[App] Server health check failed:', error);
+      setServerStatus('error');
     }
+  }, [connect, checkUrlForRoom, openNameModal, joinRoom]);
+
+  useEffect(() => {
+    initializeConnection();
   }, []);
+
+  // Handle retry connection
+  const handleRetry = useCallback(() => {
+    initializeConnection();
+  }, [initializeConnection]);
 
   // Handle create room
   const handleCreateRoom = useCallback(async () => {
@@ -218,6 +249,11 @@ export default function App() {
 
     closeNameModal();
   }, [setUserName, pendingAction, modalContext, closeNameModal]);
+
+  // Show server status while checking or on error
+  if (serverStatus !== 'ready') {
+    return <ServerStatus status={serverStatus} onRetry={handleRetry} />;
+  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">

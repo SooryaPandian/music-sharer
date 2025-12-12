@@ -1,27 +1,26 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
-const path = require("path");
+const cors = require("cors");
 const { setupMessageHandlers } = require("./src/signaling");
 const { cleanupOldRooms } = require("./src/roomManager");
 const config = require("./src/config");
 
 const app = express();
+
+// Enable CORS for all origins
+app.use(cors());
+
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve static files
-app.use(express.static(path.join(__dirname)));
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-app.get("/styles.css", (req, res) => {
-  res.sendFile(path.join(__dirname, "styles.css"));
-});
-
-app.get("/help", (req, res) => {
-  res.send("Help page");
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({ 
+    status: "ok", 
+    message: "Server is running",
+    timestamp: new Date().toISOString()
+  });
 });
 
 // WebSocket connection handler
