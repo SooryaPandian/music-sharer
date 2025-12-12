@@ -40,6 +40,9 @@ export function useWebRTC() {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
+          channelCount: 2, // Stereo audio
+          sampleRate: 48000, // High-quality audio (48kHz)
+          latency: 0, // Minimize latency for real-time streaming
         },
       });
       
@@ -186,15 +189,21 @@ export function useWebRTC() {
       const offer = await pc.createOffer();
       console.log(`[Broadcaster] ✓ Offer created successfully`);
       
+      // Modify SDP to ensure stereo audio
+      const modifiedOffer = {
+        ...offer,
+        sdp: ensureStereoInSDP(offer.sdp)
+      };
+      
       console.log(`[Broadcaster] Setting local description...`);
-      await pc.setLocalDescription(offer);
+      await pc.setLocalDescription(modifiedOffer);
       console.log(`[Broadcaster] ✓ Local description set`);
       
       console.log(`[Broadcaster] Sending offer to ${listenerId}...`);
       send({
         type: "offer",
         targetId: listenerId,
-        offer: offer,
+        offer: modifiedOffer,
       });
       console.log(`[Broadcaster] ✓ Offer sent successfully to ${listenerId}`);
       
@@ -216,11 +225,20 @@ export function useWebRTC() {
     // Handle incoming audio stream
     pc.ontrack = (event) => {
       console.log("[Listener] Received remote audio track");
+      const stream = event.streams[0];
+      
+      // Log audio track properties
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        console.log("[Listener] Audio track settings:", audioTrack.getSettings());
+        console.log("[Listener] Audio track capabilities:", audioTrack.getCapabilities());
+      }
+      
       if (audioRef.current) {
-        audioRef.current.srcObject = event.streams[0];
+        audioRef.current.srcObject = stream;
       }
       if (onAudioReady) {
-        onAudioReady(event.streams[0]);
+        onAudioReady(stream);
       }
       
       // Try to autoplay
@@ -250,16 +268,93 @@ export function useWebRTC() {
       setConnectionStatus(pc.connectionState);
     };
     
+    // Modify SDP to ensure stereo audio
+    const modifiedOffer = {
+      ...data.offer,
+      sdp: ensureStereoInSDP(data.offer.sdp)
+    };
+    
     // Set remote description and create answer
-    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+    await pc.setRemoteDescription(new RTCSessionDescription(modifiedOffer));
     const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+    
+    // Also ensure stereo in answer SDP
+    const modifiedAnswer = {
+      ...answer,
+      sdp: ensureStereoInSDP(answer.sdp)
+    };
+    
+    await pc.setLocalDescription(modifiedAnswer);
     
     send({
       type: "answer",
-      answer: answer,
+      answer: modifiedAnswer,
     });
-  }, [send,  ]); // Removed peerConnectionsRef - refs are stable
+  }, [send, setConnectionStatus]); // Removed peerConnectionsRef - refs are stable
+  
+  // Helper function to ensure stereo audio in SDP
+  const ensureStereoInSDP = (sdp) => {
+    console.log("[WebRTC] Modifying SDP to ensure stereo audio...");
+    
+    // Find the Opus codec line and add stereo parameters
+    let modifiedSDP = sdp;
+    
+    // Match the Opus codec payload type
+    const opusMatch = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/);
+    if (opusMatch) {
+      const opusPayload = opusMatch[1];
+      console.log("[WebRTC] Found Opus codec with payload type:", opusPayload);
+      
+      // Check if fmtp line exists for Opus
+      const fmtpRegex = new RegExp(`a=fmtp:${opusPayload} (.+)`, 'g');
+      const fmtpMatch = fmtpRegex.exec(sdp);
+      
+      if (fmtpMatch) {
+        // Update existing fmtp line to include stereo parameters
+        const existingParams = fmtpMatch[1];
+        let newParams = existingParams;
+        
+        // Add or update stereo parameter
+        if (!existingParams.includes('stereo=')) {
+          newParams += ';stereo=1';
+        } else {
+          newParams = newParams.replace(/stereo=0/, 'stereo=1');
+        }
+        
+        // Add or update sprop-stereo parameter
+        if (!existingParams.includes('sprop-stereo=')) {
+          newParams += ';sprop-stereo=1';
+        } else {
+          newParams = newParams.replace(/sprop-stereo=0/, 'sprop-stereo=1');
+        }
+        
+        // Add maxaveragebitrate for better quality
+        if (!existingParams.includes('maxaveragebitrate=')) {
+          newParams += ';maxaveragebitrate=510000';
+        }
+        
+        modifiedSDP = sdp.replace(
+          `a=fmtp:${opusPayload} ${existingParams}`,
+          `a=fmtp:${opusPayload} ${newParams}`
+        );
+        
+        console.log("[WebRTC] Updated fmtp line with stereo parameters");
+      } else {
+        // Add new fmtp line after rtpmap
+        const rtpmapLine = `a=rtpmap:${opusPayload} opus/48000/2`;
+        const newFmtpLine = `a=fmtp:${opusPayload} stereo=1;sprop-stereo=1;maxaveragebitrate=510000`;
+        modifiedSDP = sdp.replace(
+          rtpmapLine,
+          `${rtpmapLine}\r\n${newFmtpLine}`
+        );
+        
+        console.log("[WebRTC] Added new fmtp line with stereo parameters");
+      }
+    }
+    
+    console.log("[WebRTC] ✓ SDP modified for stereo audio");
+    return modifiedSDP;
+  };
   
   // Handle answer from listener (Broadcaster side)
   const handleAnswer = useCallback(async (data) => {
@@ -317,6 +412,9 @@ export function useWebRTC() {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
+          channelCount: 2, // Stereo audio
+          sampleRate: 48000, // High-quality audio (48kHz)
+          latency: 0, // Minimize latency for real-time streaming
         },
       });
       

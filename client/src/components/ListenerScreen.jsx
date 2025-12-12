@@ -111,8 +111,15 @@ export default function ListenerScreen({ onLeave, audioRef }) {
                 </div>
             )}
 
-            {/* Hidden audio element */}
-            <audio ref={audioRef} autoPlay className="hidden" />
+            {/* Hidden audio element - configured for stereo output */}
+            <audio
+                ref={audioRef}
+                autoPlay
+                className="hidden"
+                mozchannels="2"
+                webkitchannels="2"
+                preload="auto"
+            />
         </div>
     );
 }
