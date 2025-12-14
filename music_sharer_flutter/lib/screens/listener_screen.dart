@@ -16,6 +16,12 @@ class _ListenerScreenState extends State<ListenerScreen>
     with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late AnimationController _visualizerController;
+  
+  // Real-time audio levels for visualizer
+  // Note: For listener, we simulate levels based on audio activity
+  // since we don't have direct access to raw PCM from WebRTC remote stream
+  List<double> _audioLevels = List.filled(20, 0.0);
+  bool _hasAudio = false;
 
   @override
   void initState() {
@@ -30,6 +36,9 @@ class _ListenerScreenState extends State<ListenerScreen>
       vsync: this,
       duration: const Duration(milliseconds: 100),
     )..repeat();
+    
+    // Update audio levels periodically when connected
+    _visualizerController.addListener(_updateAudioLevels);
 
     // Set up broadcaster left callback
     final signalingService = context.read<SignalingService>();
@@ -54,6 +63,7 @@ class _ListenerScreenState extends State<ListenerScreen>
 
   @override
   void dispose() {
+    _visualizerController.removeListener(_updateAudioLevels);
     _pulseController.dispose();
     _visualizerController.dispose();
     // Detach and dispose renderer
@@ -62,6 +72,37 @@ class _ListenerScreenState extends State<ListenerScreen>
     _remoteRenderer.srcObject = null;
     _remoteRenderer.dispose();
     super.dispose();
+  }
+  
+  /// Update audio levels with simulated activity
+  /// Note: In a full implementation, we'd analyze actual audio samples
+  /// For now, we create dynamic effects when audio is playing
+  void _updateAudioLevels() {
+    if (!mounted) return;
+    
+    final webrtcService = context.read<WebRTCService>();
+    final isConnected = webrtcService.state == WebRTCState.connected;
+    final isMuted = webrtcService.isMuted;
+    
+    if (isConnected && !isMuted) {
+      // Simulate audio levels with varied heights for visual effect
+      // This creates a "dancing" visualizer effect
+      setState(() {
+        _hasAudio = true;
+        final random = Random();
+        for (int i = 0; i < 20; i++) {
+          // Create wave-like pattern with some randomness
+          final wave = sin((DateTime.now().millisecondsSinceEpoch / 200.0) + (i * 0.3));
+          final randomFactor = random.nextDouble() * 0.3;
+          _audioLevels[i] = ((wave + 1) / 2 * 0.6 + randomFactor).clamp(0.0, 1.0);
+        }
+      });
+    } else {
+      setState(() {
+        _hasAudio = false;
+        _audioLevels = List.filled(20, 0.0);
+      });
+    }
   }
 
   void _showDisconnectedDialog() {
@@ -428,31 +469,32 @@ class _ListenerScreenState extends State<ListenerScreen>
   }
 
   Widget _buildVisualizerBar(int index, bool isActive) {
-    final random = Random(DateTime.now().millisecondsSinceEpoch + index * 17);
-    final height = isActive
-        ? 0.2 + random.nextDouble() * 0.8
-        : 0.1 + (sin(index * 0.3) * 0.05);
+    // Use real audio levels for dynamic visualization
+    final double audioLevel = index < _audioLevels.length ? _audioLevels[index] : 0.0;
+    final height = isActive && _hasAudio
+        ? 0.1 + audioLevel * 0.9  // Dynamic level (0.1 to 1.0)
+        : 0.05;  // Minimal height when not playing
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
+      duration: const Duration(milliseconds: 80),  // Smooth animation
       width: 8,
       height: 150 * height,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: isActive
+          colors: isActive && _hasAudio
               ? [
                   const Color(0xFF6366F1),
-                  const Color(0xFFA855F7),
+                  audioLevel > 0.7 ? const Color(0xFFEF4444) : const Color(0xFFA855F7),  // Red for high levels
                 ]
               : [
+                  Colors.grey.shade800,
                   Colors.grey.shade700,
-                  Colors.grey.shade600,
                 ],
         ),
         borderRadius: BorderRadius.circular(4),
-        boxShadow: isActive
+        boxShadow: isActive && _hasAudio && audioLevel > 0.5
             ? [
                 BoxShadow(
                   color: const Color(0xFF6366F1).withAlpha(102),

@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../services/signaling_service.dart';
 import '../services/webrtc_service.dart';
@@ -22,6 +24,10 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
   late AnimationController _visualizerController;
   bool _showChat = false;
   bool _showUsers = false;
+  
+  // Real-time audio levels for visualizer
+  List<double> _audioLevels = List.filled(20, 0.0);
+  StreamSubscription<Uint8List>? _audioLevelSubscription;
 
   @override
   void initState() {
@@ -46,6 +52,11 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
       // Get audio stream from native
       final audioStream = audioCaptureService.audioStream;
       if (audioStream != null) {
+        // Subscribe to audio stream to calculate real-time levels for visualizer
+        _audioLevelSubscription = audioStream.listen((Uint8List audioData) {
+          _calculateAudioLevels(audioData);
+        });
+        
         // Set up WebRTC callbacks BEFORE starting broadcast
         // These callbacks will send offers and ICE candidates to listeners
         webrtcService.onOffer = (String listenerId, RTCSessionDescription offer) {
@@ -110,9 +121,58 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
   @override
   void dispose() {
     _visualizerController.dispose();
+    _audioLevelSubscription?.cancel();
+    // Note: WebRTC and signaling cleanup is handled by their respective services
+    // when the user navigates away from this screen
     super.dispose();
   }
-
+  
+  /// Calculate audio levels from PCM data for visualizer
+  void _calculateAudioLevels(Uint8List audioData) {
+    // Calculate RMS (Root Mean Square) for audio visualization
+    // PCM 16-bit stereo at 48kHz
+    const int bytesPerSample = 2; // 16-bit = 2 bytes
+    const int channels = 2; // Stereo
+    const int samplesPerBar = 2048; // Samples to average per bar
+    
+    List<double> newLevels = [];
+    
+    for (int barIndex = 0; barIndex < 20; barIndex++) {
+      int startByte = barIndex * samplesPerBar * bytesPerSample * channels;
+      if (startByte >= audioData.length) {
+        newLevels.add(0.0);
+        continue;
+      }
+      
+      double sum = 0.0;
+      int sampleCount = 0;
+      
+      for (int i = startByte; i < audioData.length && i < startByte + (samplesPerBar * bytesPerSample * channels); i += bytesPerSample) {
+        // Read 16-bit signed PCM sample
+        if (i + 1 < audioData.length) {
+          int sample = (audioData[i + 1] << 8) | audioData[i];
+          // Convert to signed
+          if (sample > 32767) sample -= 65536;
+          // Normalize to 0-1 range
+          double normalized = sample.abs() / 32768.0;
+          sum += normalized * normalized;
+          sampleCount++;
+        }
+      }
+      
+      // Calculate RMS and apply smoothing
+      double rms = sampleCount > 0 ? sqrt(sum / sampleCount) : 0.0;
+      // Apply some gain to make visualization more visible
+      rms = (rms * 2.0).clamp(0.0, 1.0);
+      newLevels.add(rms);
+    }
+    
+    if (mounted) {
+      setState(() {
+        _audioLevels = newLevels;
+      });
+    }
+  }
   void _toggleChat() {
     setState(() {
       _showChat = !_showChat;
@@ -399,13 +459,14 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
   }
 
   Widget _buildVisualizerBar(int index, bool isActive) {
-    final random = Random(DateTime.now().millisecondsSinceEpoch + index * 17);
+    // Use real audio levels instead of random values
+    final double audioLevel = index < _audioLevels.length ? _audioLevels[index] : 0.0;
     final height = isActive
-        ? 0.2 + random.nextDouble() * 0.8
-        : 0.1 + (sin(index * 0.3) * 0.05);
+        ? 0.1 + audioLevel * 0.9  // Real audio level (0.1 to 1.0)
+        : 0.05;  // Minimal height when paused
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
+      duration: const Duration(milliseconds: 50),  // Faster response for real-time feel
       width: 8,
       height: 150 * height,
       decoration: BoxDecoration(
@@ -413,25 +474,16 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
           colors: isActive
-              ? const [
+              ? [
                   Color(0xFF6366F1),
-                  Color(0xFFA855F7),
+                  audioLevel > 0.7 ? Color(0xFFEF4444) : Color(0xFFA855F7),  // Red for high levels
                 ]
               : [
+                  Colors.grey.shade800,
                   Colors.grey.shade700,
-                  Colors.grey.shade600,
                 ],
         ),
         borderRadius: BorderRadius.circular(4),
-        boxShadow: isActive
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF6366F1).withOpacity(0.4),
-                  blurRadius: 8,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
       ),
     );
   }

@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.musicsharer.music_sharer_flutter"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35  // Required by path_provider_android, compatible with flutter_webrtc 0.11.7
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -25,7 +25,7 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 29  // Android 10 required for AudioPlaybackCapture
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 35  // Required by path_provider_android
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
