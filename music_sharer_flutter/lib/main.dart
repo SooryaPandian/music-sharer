@@ -3,26 +3,32 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/signaling_service.dart';
 import 'services/webrtc_service.dart';
+import 'services/audio_capture_service.dart';
+import 'state/app_state.dart';
 import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize shared preferences
   final prefs = await SharedPreferences.getInstance();
   
-  runApp(MusicSharerApp(prefs: prefs));
+  runApp(MyApp(prefs: prefs));
 }
 
-class MusicSharerApp extends StatelessWidget {
+class MyApp extends StatelessWidget {
   final SharedPreferences prefs;
   
-  const MusicSharerApp({super.key, required this.prefs});
+  const MyApp({super.key, required this.prefs});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AppState()),
         ChangeNotifierProvider(create: (_) => SignalingService(prefs)),
         ChangeNotifierProvider(create: (_) => WebRTCService()),
+        ChangeNotifierProvider(create: (_) => AudioCaptureService()),
       ],
       child: MaterialApp(
         title: 'Music Sharer',

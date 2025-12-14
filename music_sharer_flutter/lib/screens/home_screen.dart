@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/signaling_service.dart';
 import '../services/webrtc_service.dart';
+import '../services/audio_capture_service.dart';
+import '../state/app_state.dart';
+import '../widgets/name_dialog.dart';
+import 'broadcaster_screen.dart';
 import 'listener_screen.dart';
 import 'settings_screen.dart';
 
@@ -14,7 +18,24 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _roomCodeController = TextEditingController();
-  bool _isLoading = false;
+  bool _isLoadingJoin = false;
+  bool _isLoadingCreate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAndRequestName();
+  }
+  
+  Future<void> _checkAndRequestName() async {
+    final appState = context.read<AppState>();
+    if (appState.userName == null || appState.userName!.isEmpty) {
+      final name = await showNameDialog(context);
+      if (name != null && mounted) {
+        appState.setUserName(name);
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -30,8 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
-
+    setState(() => _isLoadingJoin = true);
+    
+    final appState = context.read<AppState>();
     final signalingService = context.read<SignalingService>();
     final webrtcService = context.read<WebRTCService>();
 
@@ -60,11 +82,15 @@ class _HomeScreenState extends State<HomeScreen> {
     };
 
     signalingService.onRoomJoined = () {
-      setState(() => _isLoading = false);
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ListenerScreen()),
-      );
+      if (mounted) {
+        setState(() => _isLoadingJoin = false);
+        appState.setRole(UserRole.listener);
+        appState.setCurrentScreen(AppScreen.listener);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ListenerScreen()),
+        );
+      }
     };
 
     // Connect and join room
@@ -72,13 +98,90 @@ class _HomeScreenState extends State<HomeScreen> {
       await signalingService.connect();
       
       if (signalingService.isConnected) {
-        signalingService.joinRoom(roomCode);
+        signalingService.joinRoom(roomCode, userName: appState.userName);
       } else {
-        setState(() => _isLoading = false);
+        setState(() => _isLoadingJoin = false);
         _showError(signalingService.errorMessage ?? 'Failed to connect to server');
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() => _isLoadingJoin = false);
+      _showError('Connection error: $e');
+    }
+  }
+  
+  Future<void> _createRoom() async {
+    final appState = context.read<AppState>();
+    
+    // Ensure user has a name
+    if (appState.userName == null || appState.userName!.isEmpty) {
+      final name = await showNameDialog(context);
+      if (name == null) return;
+      appState.setUserName(name);
+    }
+    
+    setState(() => _isLoadingCreate = true);
+    
+    final signalingService = context.read<SignalingService>();
+    final webrtcService = context.read<WebRTCService>();
+    final audioCaptureService = context.read<AudioCaptureService>();
+    
+    // Check if system audio capture is supported
+    final isSupported = await audioCaptureService.isSupported();
+    if (!isSupported) {
+      setState(() => _isLoadingCreate = false);
+      _showError('System audio capture requires Android 10 or higher');
+      return;
+    }
+    
+    // Request MediaProjection permission and start audio capture
+    final captureStarted = await audioCaptureService.startCapture();
+    if (!captureStarted) {
+      setState(() => _isLoadingCreate = false);
+      _showError('Failed to start audio capture. Please grant permission.');
+      return;
+    }
+    
+    // Set up callbacks
+    signalingService.onRoomCreated = (roomCode) async {
+      if (mounted) {
+        appState.setRoomCode(roomCode);
+        appState.setRole(UserRole.broadcaster);
+        appState.setCurrentScreen(AppScreen.broadcaster);
+        
+        // Start broadcasting with audio stream from native
+        try {
+          final audioStream = audioCaptureService.audioStream;
+          if (audioStream != null) {
+            // Note: WebRTC integration happens in broadcaster screen
+            setState(() => _isLoadingCreate = false);
+            
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BroadcasterScreen()),
+            );
+          } else {
+            setState(() => _isLoadingCreate = false);
+            _showError('Audio stream not available');
+          }
+        } catch (e) {
+          setState(() => _isLoadingCreate = false);
+          _showError('Error setting up broadcast: $e');
+        }
+      }
+    };
+    
+    // Connect and create room
+    try {
+      await signalingService.connect();
+      
+      if (signalingService.isConnected) {
+        signalingService.createRoom(userName: appState.userName);
+      } else {
+        setState(() => _isLoadingCreate = false);
+        _showError(signalingService.errorMessage ?? 'Failed to connect to server');
+      }
+    } catch (e) {
+      setState(() => _isLoadingCreate = false);
       _showError('Connection error: $e');
     }
   }
@@ -165,7 +268,70 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 48),
 
-                // Room code input card
+                // Create Room card  
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          '🎙️ Start Broadcasting',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Share your device\'s system audio',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: _isLoadingCreate ? null : _createRoom,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                          ),
+                          child: _isLoadingCreate
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Create Room',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 16),
+                
+                const Text(
+                  'OR',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white60,
+                  ),
+                ),
+                
+                const SizedBox(height: 16),
+
+                // Join Room card
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
@@ -212,8 +378,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
                         // Join button
                         ElevatedButton(
-                          onPressed: _isLoading ? null : _joinRoom,
-                          child: _isLoading
+                          onPressed: _isLoadingJoin ? null : _joinRoom,
+                          child: _isLoadingJoin
                               ? const SizedBox(
                                   width: 24,
                                   height: 24,

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -19,15 +20,23 @@ enum AudioOutputMode {
 
 /// WebRTC service for handling audio streaming
 class WebRTCService extends ChangeNotifier {
+  // Listener mode (single peer connection)
   RTCPeerConnection? _peerConnection;
   MediaStream? _remoteStream;
+  
+  // Broadcaster mode (multiple peer connections)
+  final Map<String, RTCPeerConnection> _listenerConnections = {};
+  MediaStream? _localStream;
+  bool _isBroadcasting = false;
+  bool _isBroadcastMuted = false;
+  
   WebRTCState _state = WebRTCState.idle;
   RTCVideoRenderer? _attachedRenderer;
   
   // Audio output mode (speaker by default)
   AudioOutputMode _audioOutputMode = AudioOutputMode.speaker;
   
-  // Mute state
+  // Mute state (for listener mode)
   bool _isMuted = false;
   
   // Headphone connection state
@@ -45,13 +54,21 @@ class WebRTCService extends ChangeNotifier {
 
   WebRTCState get state => _state;
   MediaStream? get remoteStream => _remoteStream;
+  MediaStream? get localStream => _localStream;
   AudioOutputMode get audioOutputMode => _audioOutputMode;
   bool get isMuted => _isMuted;
   bool get isHeadphonesConnected => _isHeadphonesConnected;
+  bool get isBroadcasting => _isBroadcasting;
+  bool get isBroadcastMuted => _isBroadcastMuted;
+  int get listenerConnectionsCount => _listenerConnections.length;
 
-  // Callbacks for signaling
+  // Callbacks for signaling (listener mode)
   Function(RTCSessionDescription)? onAnswer;
   Function(RTCIceCandidate)? onIceCandidate;
+  
+  // Callbacks for signaling (broadcaster mode)
+  Function(String listenerId, RTCSessionDescription offer)? onOffer;
+  Function(String listenerId, RTCIceCandidate candidate)? onBroadcasterIceCandidate;
 
   /// Initialize WebRTC peer connection
   Future<void> initialize() async {
@@ -353,10 +370,216 @@ class WebRTCService extends ChangeNotifier {
     }
   }
 
+  /// Start broadcasting (broadcaster mode) - receives audio stream from platform channel
+  Future<void> startBroadcast(Stream<Uint8List> audioStream) async {
+    debugPrint('[WebRTCService] Starting broadcast with system audio stream');
+    
+    try {
+      // TODO: For now, we create a minimal audio stream
+      // The native system audio is already being captured by AudioCaptureService
+      // In a future enhancement, we should create MediaStreamTrack from native audio
+      // For now, we create a minimal stream - native audio routing will be added later
+      
+      // Create a minimal local stream with a microphone track as placeholder
+      // This is needed to establish peer connections
+      // The actual audio will come from native MediaProjection when integrated
+      final Map<String, dynamic> mediaConstraints = {
+        'audio': {
+          'echoCancellation': false,
+          'noiseSuppression': false,
+          'autoGainControl': false,
+        },
+        'video': false,
+      };
+      
+      _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      
+      _isBroadcasting = true;
+      _isBroadcastMuted = false;
+      debugPrint('[WebRTCService] Broadcast started - using placeholder audio track');
+      debugPrint('[WebRTCService] Note: Native system audio integration pending');
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[WebRTCService] Error starting broadcast: $e');
+      _isBroadcasting = false;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Handle new listener joining (broadcaster side)
+  Future<void> handleNewListener(String listenerId) async {
+    debugPrint('[WebRTCService] New listener connecting: $listenerId');
+    
+    if (!_isBroadcasting) {
+      debugPrint('[WebRTCService] Not broadcasting');
+      return;
+    }
+    
+    try {
+      // Create peer connection for this listener
+      final pc = await createPeerConnection(_iceServers, {
+        'mandatory': {},
+        'optional': [],
+      });
+      
+      _listenerConnections[listenerId] = pc;
+      
+      // Add local audio tracks to the peer connection
+      // Currently using placeholder microphone audio from getUserMedia
+      // TODO: Replace with native system audio from MediaProjection
+      if (_localStream != null) {
+        for (final track in _localStream!.getAudioTracks()) {
+          await pc.addTrack(track, _localStream!);
+          debugPrint('[WebRTCService] Added audio track for listener $listenerId');
+        }
+      } else {
+        debugPrint('[WebRTCService] WARNING: No local stream available!');
+      }
+      
+      // Handle ICE candidates - send with listener ID
+      pc.onIceCandidate = (RTCIceCandidate candidate) {
+        debugPrint('[WebRTCService] ICE candidate for listener $listenerId');
+        onBroadcasterIceCandidate?.call(listenerId, candidate);
+      };
+      
+      // Create offer
+      final offer = await pc.createOffer({
+        'offerToReceiveAudio': false,
+        'offerToReceiveVideo': false,
+      });
+      
+      // Modify SDP for stereo audio
+      final modifiedSdp = _ensureStereoInSDP(offer.sdp ?? '');
+      final modifiedOffer = RTCSessionDescription(modifiedSdp, offer.type);
+      
+      await pc.setLocalDescription(modifiedOffer);
+      debugPrint('[WebRTCService] Created and set local description for listener $listenerId');
+      
+      // Send offer through signaling via callback
+      onOffer?.call(listenerId, modifiedOffer);
+      debugPrint('[WebRTCService] Offer sent via callback for listener $listenerId');
+      
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[WebRTCService] Error handling new listener: $e');
+    }
+  }
+  
+  /// Handle answer from listener (broadcaster side)
+  Future<void> handleAnswer(String listenerId, RTCSessionDescription answer) async {
+    final pc = _listenerConnections[listenerId];
+    if (pc != null) {
+      debugPrint('[WebRTCService] Setting answer for listener $listenerId');
+      await pc.setRemoteDescription(answer);
+    }
+  }
+  
+  /// Add ICE candidate for specific listener (broadcaster side)
+  Future<void> addListenerIceCandidate(String listenerId, RTCIceCandidate candidate) async {
+    final pc = _listenerConnections[listenerId];
+    if (pc != null) {
+      await pc.addCandidate(candidate);
+      debugPrint('[WebRTCService] Added ICE candidate for listener $listenerId');
+    }
+  }
+  
+  /// Toggle broadcast mute
+  void toggleBroadcastMute() {
+    if (!_isBroadcasting || _localStream == null) return;
+    
+    _isBroadcastMuted = !_isBroadcastMuted;
+    for (final track in _localStream!.getAudioTracks()) {
+      track.enabled = !_isBroadcastMuted;
+    }
+    debugPrint('[WebRTCService] Broadcast mute toggled: $_isBroadcastMuted');
+    notifyListeners();
+  }
+  
+  /// Stop broadcasting
+  Future<void> stopBroadcast() async {
+    debugPrint('[WebRTCService] Stopping broadcast');
+    
+    // Close all listener connections
+    for (final pc in _listenerConnections.values) {
+      await pc.close();
+    }
+    _listenerConnections.clear();
+    
+    // Stop local stream
+    if (_localStream != null) {
+      for (final track in _localStream!.getTracks()) {
+        track.stop();
+      }
+      await _localStream!.dispose();
+      _localStream = null;
+    }
+    
+    _isBroadcasting = false;
+    _isBroadcastMuted = false;
+    notifyListeners();
+  }
+  
+  /// Ensure stereo in SDP for high-quality audio
+  String _ensureStereoInSDP(String sdp) {
+    if (sdp.isEmpty) return sdp;
+    
+    try {
+      final lines = sdp.split('\r\n');
+      
+      // Find opus payload type
+      String? opusPayload;
+      for (final line in lines) {
+        if (line.startsWith('a=rtpmap') && line.toLowerCase().contains('opus/')) {
+          final parts = line.split(' ');
+          if (parts.isNotEmpty) {
+            final pt = parts[0].split(':').last;
+            opusPayload = pt;
+            break;
+          }
+        }
+      }
+      
+      if (opusPayload == null) return sdp;
+      
+      // Add or update fmtp line for stereo
+      bool hasFmtp = false;
+      for (var i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('a=fmtp:$opusPayload')) {
+          hasFmtp = true;
+          if (!lines[i].contains('stereo=1')) {
+            lines[i] = '${lines[i]}; stereo=1; sprop-stereo=1; maxaveragebitrate=510000';
+          }
+          break;
+        }
+      }
+      
+      if (!hasFmtp) {
+        for (var i = 0; i < lines.length; i++) {
+          if (lines[i].startsWith('a=rtpmap') && lines[i].contains('opus/')) {
+            lines.insert(i + 1, 'a=fmtp:$opusPayload stereo=1; sprop-stereo=1; maxaveragebitrate=510000');
+            break;
+          }
+        }
+      }
+      
+      return lines.join('\r\n');
+    } catch (e) {
+      debugPrint('[WebRTCService] SDP stereo modification failed: $e');
+      return sdp;
+    }
+  }
+
   /// Close the peer connection
   Future<void> close() async {
     debugPrint('[WebRTCService] Closing peer connection');
     
+    // Stop broadcast if active
+    if (_isBroadcasting) {
+     await stopBroadcast();
+    }
+    
+    // Close listener peer connection
     if (_remoteStream != null) {
       _remoteStream!.getTracks().forEach((track) => track.stop());
       await _remoteStream!.dispose();

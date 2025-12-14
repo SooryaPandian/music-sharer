@@ -25,13 +25,21 @@ class SignalingService extends ChangeNotifier {
   String? _errorMessage;
   String _serverUrl = _defaultServerUrl;
 
-  // Callbacks for WebRTC signaling
+  // Callbacks for WebRTC signaling (listener mode)
   Function(Map<String, dynamic>)? onOffer;
   Function(Map<String, dynamic>)? onIceCandidate;
   Function()? onBroadcasterLeft;
   Function()? onRoomJoined;
-  // Callback to send answer when produced by WebRTC service
-  Function(Map<String, dynamic>)? sendAnswerCallback;
+  
+  // Callbacks for broadcaster mode
+  Function(String roomCode)? onRoomCreated;
+  Function(String listenerId, String name)? onNewListener;
+  Function(String listenerId)? onListenerLeft;
+  Function(Map<String, dynamic>)? onAnswer;
+  Function(List<Map<String, dynamic>>)? onListenersUpdated;
+  
+  // Chat callbacks
+  Function(Map<String, dynamic>)? onChatMessage;
 
   SignalingService(this._prefs) {
     _serverUrl = _prefs.getString(_serverUrlKey) ?? _defaultServerUrl;
@@ -103,15 +111,61 @@ class SignalingService extends ChangeNotifier {
       debugPrint('[SignalingService] Received message: $type');
 
       switch (type) {
+        // Broadcaster events
+        case 'room-created':
+          _roomCode = data['roomCode'] as String?;
+          _state = SignalingState.roomJoined;
+          notifyListeners();
+          if (_roomCode != null) {
+            onRoomCreated?.call(_roomCode!);
+          }
+          break;
+          
+        case 'new-listener':
+          final listenerId = data['listenerId'] as String?;
+          final listenerName = data['listenerName'] as String? ?? 'Unknown';
+          if (listenerId != null) {
+            onNewListener?.call(listenerId, listenerName);
+          }
+          // Update listeners list if provided
+          if (data['listeners'] != null) {
+            final listeners = data['listeners'] as List<dynamic>;
+            onListenersUpdated?.call(listeners.cast<Map<String, dynamic>>());
+          }
+          break;
+          
+        case 'listener-left':
+          final listenerId = data['listenerId'] as String?;
+          if (listenerId != null) {
+            onListenerLeft?.call(listenerId);
+          }
+          // Update listeners list if provided
+          if (data['listeners'] != null) {
+            final listeners = data['listeners'] as List<dynamic>;
+            onListenersUpdated?.call(listeners.cast<Map<String, dynamic>>());
+          }
+          break;
+          
+        case 'answer':
+          // Broadcaster receives answers from listeners
+          onAnswer?.call(data);
+          break;
+        
+        // Listener events
         case 'room-joined':
           _roomCode = data['roomCode'] as String?;
           _state = SignalingState.roomJoined;
           notifyListeners();
           onRoomJoined?.call();
+          // Update listeners list if provided
+          if (data['listeners'] != null) {
+            final listeners = data['listeners'] as List<dynamic>;
+            onListenersUpdated?.call(listeners.cast<Map<String, dynamic>>());
+          }
           break;
 
         case 'offer':
-          // Forward full offer payload to the WebRTC service
+          // Listener receives offer from broadcaster
           onOffer?.call(data);
           break;
 
@@ -119,14 +173,14 @@ class SignalingService extends ChangeNotifier {
           onIceCandidate?.call(data);
           break;
 
-        case 'answer':
-          // Listener should not normally receive 'answer', but handle gracefully
-          onOffer?.call(data);
-          break;
-
         case 'broadcaster-left':
         case 'broadcaster-disconnected':
           onBroadcasterLeft?.call();
+          break;
+          
+        // Chat events
+        case 'chat-message':
+          onChatMessage?.call(data);
           break;
 
         case 'error':
@@ -154,6 +208,36 @@ class SignalingService extends ChangeNotifier {
       'userName': userName ?? 'Mobile User',
     }));
   }
+  
+  /// Create a room as broadcaster
+  void createRoom({String? userName}) {
+    if (_channel == null || _state != SignalingState.connected) {
+      debugPrint('[SignalingService] Cannot create room: not connected');
+      return;
+    }
+
+    debugPrint('[SignalingService] Creating room');
+    _channel!.sink.add(jsonEncode({
+      'type': 'create-room',
+      'userName': userName ?? 'Mobile Broadcaster',
+    }));
+  }
+  
+  /// Send chat message
+  void sendChatMessage(String message, {String? userName}) {
+    if (_channel == null || _roomCode == null) {
+      debugPrint('[SignalingService] Cannot send chat: not in room');
+      return;
+    }
+    
+    debugPrint('[SignalingService] Sending chat message');
+    _channel!.sink.add(jsonEncode({
+      'type': 'chat-message',
+      'roomCode': _roomCode,
+      'userName': userName ?? 'User',
+      'message': message,
+    }));
+  }
 
   /// Send an SDP answer to the broadcaster
   void sendAnswer(Map<String, dynamic> answer) {
@@ -173,6 +257,30 @@ class SignalingService extends ChangeNotifier {
     debugPrint('[SignalingService] Sending ICE candidate');
     _channel!.sink.add(jsonEncode({
       'type': 'ice-candidate',
+      'candidate': candidate,
+    }));
+  }
+  
+  /// Send an offer to a specific listener (broadcaster mode)
+  void sendOffer(String listenerId, Map<String, dynamic> offer) {
+    if (_channel == null) return;
+
+    debugPrint('[SignalingService] Sending offer to listener $listenerId');
+    _channel!.sink.add(jsonEncode({
+      'type': 'offer',
+      'targetId': listenerId,
+      'offer': offer,
+    }));
+  }
+  
+  /// Send an ICE candidate to a specific listener (broadcaster mode)
+  void sendBroadcasterIceCandidate(String listenerId, Map<String, dynamic> candidate) {
+    if (_channel == null) return;
+
+    debugPrint('[SignalingService] Sending broadcaster ICE candidate to listener $listenerId');
+    _channel!.sink.add(jsonEncode({
+      'type': 'ice-candidate',
+      'targetId': listenerId,
       'candidate': candidate,
     }));
   }
