@@ -123,24 +123,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isLoadingCreate = true);
     
     final signalingService = context.read<SignalingService>();
-    final webrtcService = context.read<WebRTCService>();
-    final audioCaptureService = context.read<AudioCaptureService>();
-    
-    // Check if system audio capture is supported
-    final isSupported = await audioCaptureService.isSupported();
-    if (!isSupported) {
-      setState(() => _isLoadingCreate = false);
-      _showError('System audio capture requires Android 10 or higher');
-      return;
-    }
-    
-    // Request MediaProjection permission and start audio capture
-    final captureStarted = await audioCaptureService.startCapture();
-    if (!captureStarted) {
-      setState(() => _isLoadingCreate = false);
-      _showError('Failed to start audio capture. Please grant permission.');
-      return;
-    }
     
     // Set up callbacks
     signalingService.onRoomCreated = (roomCode) async {
@@ -149,25 +131,13 @@ class _HomeScreenState extends State<HomeScreen> {
         appState.setRole(UserRole.broadcaster);
         appState.setCurrentScreen(AppScreen.broadcaster);
         
-        // Start broadcasting with audio stream from native
-        try {
-          final audioStream = audioCaptureService.audioStream;
-          if (audioStream != null) {
-            // Note: WebRTC integration happens in broadcaster screen
-            setState(() => _isLoadingCreate = false);
-            
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const BroadcasterScreen()),
-            );
-          } else {
-            setState(() => _isLoadingCreate = false);
-            _showError('Audio stream not available');
-          }
-        } catch (e) {
-          setState(() => _isLoadingCreate = false);
-          _showError('Error setting up broadcast: $e');
-        }
+        setState(() => _isLoadingCreate = false);
+        
+        // Navigate to broadcaster screen, which will handle permission and audio capture
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const BroadcasterScreen()),
+        );
       }
     };
     

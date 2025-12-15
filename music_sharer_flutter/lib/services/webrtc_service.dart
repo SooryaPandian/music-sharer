@@ -35,6 +35,10 @@ class WebRTCService extends ChangeNotifier {
   // Audio stream subscription for system audio
   StreamSubscription<Uint8List>? _audioStreamSubscription;
   
+  // Broadcast heartbeat to keep connection alive
+  Timer? _broadcastHeartbeatTimer;
+  Uint8List? _lastAudioData;
+  
   WebRTCState _state = WebRTCState.idle;
   RTCVideoRenderer? _attachedRenderer;
   
@@ -388,6 +392,8 @@ class WebRTCService extends ChangeNotifier {
       // Subscribe to the system audio stream from MediaProjection
       _audioStreamSubscription = audioStream.listen(
         (Uint8List audioData) {
+          // Store last audio data for heartbeat
+          _lastAudioData = audioData;
           // Send audio data to all connected listeners via data channels
           _sendAudioToListeners(audioData);
         },
@@ -395,6 +401,26 @@ class WebRTCService extends ChangeNotifier {
           debugPrint('[WebRTCService] Audio stream error: $error');
         },
         cancelOnError: false,
+      );
+      
+      // Start heartbeat timer to ensure continuous transmission
+      // This sends data every 100ms even if audio stream stalls
+      _broadcastHeartbeatTimer?.cancel();
+      _broadcastHeartbeatTimer = Timer.periodic(
+        const Duration(milliseconds: 100),
+        (timer) {
+          // If we haven't received new audio data, send silence or last data
+          if (_isBroadcasting && _listenerDataChannels.isNotEmpty) {
+            if (_lastAudioData != null) {
+              // We have data, send it (or silence if muted)
+              _sendAudioToListeners(_lastAudioData!);
+            } else {
+              // No data yet, send silence (4800 bytes = 100ms at 48kHz stereo 16-bit)
+              final silenceData = Uint8List(4800);
+              _sendAudioToListeners(silenceData);
+            }
+          }
+        },
       );
       
       // Note: We don't need getUserMedia anymore!
@@ -416,13 +442,16 @@ class WebRTCService extends ChangeNotifier {
   
   /// Send audio data to all connected listeners via data channels
   void _sendAudioToListeners(Uint8List audioData) {
-    if (_isBroadcastMuted) return;
+    // If muted, send silence instead of actual audio
+    final Uint8List dataToSend = _isBroadcastMuted 
+      ? Uint8List(audioData.length)  // Zero-filled buffer (silence)
+      : audioData;
     
     _listenerDataChannels.forEach((listenerId, dataChannel) {
       try {
         if (dataChannel.state == RTCDataChannelState.RTCDataChannelOpen) {
-          // Send raw PCM audio bytes
-          dataChannel.send(RTCDataChannelMessage.fromBinary(audioData));
+          // Send raw PCM audio bytes (real audio or silence)
+          dataChannel.send(RTCDataChannelMessage.fromBinary(dataToSend));
         }
       } catch (e) {
         debugPrint('[WebRTCService] Error sending audio to $listenerId: $e');
@@ -518,6 +547,11 @@ class WebRTCService extends ChangeNotifier {
   /// Stop broadcasting
   Future<void> stopBroadcast() async {
     debugPrint('[WebRTCService] Stopping broadcast');
+    
+    // Stop heartbeat timer
+    _broadcastHeartbeatTimer?.cancel();
+    _broadcastHeartbeatTimer = null;
+    _lastAudioData = null;
     
     // Cancel audio stream subscription
     await _audioStreamSubscription?.cancel();

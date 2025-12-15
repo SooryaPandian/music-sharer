@@ -9,7 +9,7 @@
 
 // For dev tunnel (default)
 // 'wss://music-sharer.onrender.com'
-export const WS_SERVER_URL = 'ws://10.97.54.49:3000';
+export const WS_SERVER_URL = 'ws://10.1.34.214:3000';
 // 'wss://j6wt9thk-3000.inc1.devtunnels.ms/'
 // Auto-detect based on environment (alternative approach)
 // export const WS_SERVER_URL = import.meta.env.VITE_WS_SERVER_URL || 'ws://localhost:3000';

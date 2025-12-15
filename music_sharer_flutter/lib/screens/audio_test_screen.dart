@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -30,6 +32,11 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   StreamSubscription? _playerPositionSubscription;
   StreamSubscription? _playerDurationSubscription;
   StreamSubscription? _playerStateSubscription;
+  
+  // Audio level monitoring
+  double _currentAudioLevel = 0.0;
+  Timer? _audioLevelTimer;
+  StreamSubscription? _audioStreamSubscription;
 
   @override
   void initState() {
@@ -68,11 +75,12 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
   
   @override
   void dispose() {
-    _durationTimer?.cancel();
     _audioPlayer.dispose();
     _playerPositionSubscription?.cancel();
     _playerDurationSubscription?.cancel();
     _playerStateSubscription?.cancel();
+    _audioLevelTimer?.cancel();
+    _audioStreamSubscription?.cancel();
     super.dispose();
   }
 
@@ -148,6 +156,9 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
       
       debugPrint('[AudioTest] ✅ Recording started successfully');
       _showSuccess('Recording started! Play some audio on your device.');
+      
+      // Start monitoring audio levels in real-time
+      _startAudioLevelMonitoring();
     } catch (e, stackTrace) {
       debugPrint('[AudioTest] ❌ Failed to start recording: $e');
       debugPrint('[AudioTest] Stack trace: $stackTrace');
@@ -223,6 +234,66 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
     
     debugPrint('[AudioTest] ✅ Recording saved: $_recordingPath');
     _showSuccess('Recording saved! ${_formatBytes(_recordedBytes)} recorded');
+    
+    // Stop audio level monitoring
+    _stopAudioLevelMonitoring();
+  }
+  
+  void _startAudioLevelMonitoring() {
+    // Subscribe to audio stream to calculate levels
+    final audioStream = SystemAudioRecorder.audioStream.receiveBroadcastStream({});
+    
+    _audioStreamSubscription = audioStream.listen(
+      (dynamic data) {
+        if (data is Uint8List || data is List<int>) {
+          final Uint8List audioData = data is Uint8List ? data : Uint8List.fromList(data as List<int>);
+          _calculateAudioLevel(audioData);
+        }
+      },
+      onError: (error) {
+        debugPrint('[AudioTest] Audio stream error: $error');
+      },
+      cancelOnError: false,
+    );
+  }
+  
+  void _stopAudioLevelMonitoring() {
+    _audioStreamSubscription?.cancel();
+    _audioStreamSubscription = null;
+    if (mounted) {
+      setState(() {
+        _currentAudioLevel = 0.0;
+      });
+    }
+  }
+  
+  void _calculateAudioLevel(Uint8List audioData) {
+    // Calculate RMS level from PCM data
+    const int bytesPerSample = 2; // 16-bit = 2 bytes
+    double sum = 0.0;
+    int sampleCount = 0;
+    
+    for (int i = 0; i < audioData.length - 1; i += bytesPerSample) {
+      // Read 16-bit signed PCM sample
+      int sample = (audioData[i + 1] << 8) | audioData[i];
+      // Convert to signed
+      if (sample > 32767) sample -= 65536;
+      // Normalize to 0-1 range
+      double normalized = sample.abs() / 32768.0;
+      sum += normalized * normalized;
+      sampleCount++;
+    }
+    
+    // Calculate RMS
+    double rms = sampleCount > 0 ? sqrt(sum / sampleCount) : 0.0;
+    // Apply some gain to make visualization more visible
+    rms = (rms * 2.0).clamp(0.0, 1.0);
+    
+    if (mounted) {
+      setState(() {
+        _currentAudioLevel = rms;
+      });
+    }
   }
 
   String _formatBytes(int bytes) {
@@ -382,6 +453,14 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
+                        'Level: ${(_currentAudioLevel * 100).toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          color: _currentAudioLevel < 0.01 ? Colors.orange : Colors.green.shade300,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
                         '${_formatBytes(_recordedBytes)} captured',
                         style: TextStyle(color: Colors.grey.shade400),
                       ),
@@ -533,36 +612,27 @@ class _AudioTestScreenState extends State<AudioTestScreen> {
               
               const Spacer(),
               
-              // Info card
-              Card(
-                color: Colors.amber.shade900.withOpacity(0.3),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.warning_amber, color: Colors.amber.shade300),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Note',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.amber.shade300,
-                            ),
-                          ),
-                        ],
+              // Info card (simplified)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade900.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.grey.shade400, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'WAV format, 48kHz Stereo. Some apps may block audio capture.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade400,
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Recordings are saved to app documents folder. '
-                        'Use a file manager to play them back. '
-                        'Format: WAV, 48kHz, Stereo, 16-bit PCM',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],

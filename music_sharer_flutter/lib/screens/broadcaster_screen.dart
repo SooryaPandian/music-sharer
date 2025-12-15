@@ -4,10 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:provider/provider.dart';
+import 'package:system_audio_recorder/system_audio_recorder.dart';
 import '../state/app_state.dart';
 import '../services/signaling_service.dart';
 import '../services/webrtc_service.dart';
-import '../services/audio_capture_service.dart';
 import '../widgets/chat_widget.dart';
 import '../widgets/users_list_widget.dart';
 
@@ -24,10 +24,16 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
   late AnimationController _visualizerController;
   bool _showChat = false;
   bool _showUsers = false;
+  bool _isRecording = false;
   
   // Real-time audio levels for visualizer
   List<double> _audioLevels = List.filled(20, 0.0);
-  StreamSubscription<Uint8List>? _audioLevelSubscription;
+  StreamSubscription? _audioStreamSubscription;
+  
+  // Audio level monitoring
+  double _currentAudioLevel = 0.0;
+  bool _lowAudioDetected = false;
+  int _zeroAudioCounter = 0;
 
   @override
   void initState() {
@@ -45,75 +51,167 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
   
   Future<void> _startBroadcasting() async {
     final webrtcService = context.read<WebRTCService>();
-    final audioCaptureService = context.read<AudioCaptureService>();
     final signalingService = context.read<SignalingService>();
     
-    try {
-      // Get audio stream from native
-      final audioStream = audioCaptureService.audioStream;
-      if (audioStream != null) {
-        // Subscribe to audio stream to calculate real-time levels for visualizer
-        _audioLevelSubscription = audioStream.listen((Uint8List audioData) {
-          _calculateAudioLevels(audioData);
-        });
-        
-        // Set up WebRTC callbacks BEFORE starting broadcast
-        // These callbacks will send offers and ICE candidates to listeners
-        webrtcService.onOffer = (String listenerId, RTCSessionDescription offer) {
-          debugPrint('[BroadcasterScreen] Sending offer to listener $listenerId');
-          signalingService.sendOffer(listenerId, {
-            'sdp': offer.sdp,
-            'type': offer.type,
-          });
-        };
-        
-        webrtcService.onBroadcasterIceCandidate = (String listenerId, RTCIceCandidate candidate) {
-          debugPrint('[BroadcasterScreen] Sending ICE candidate to listener $listenerId');
-          signalingService.sendBroadcasterIceCandidate(listenerId, {
-            'candidate': candidate.candidate,
-            'sdpMid': candidate.sdpMid,
-            'sdpMLineIndex': candidate.sdpMLineIndex,
-          });
-        };
-        
-        // Start broadcasting with the audio stream
-        await webrtcService.startBroadcast(audioStream);
-        
-        // Set up signaling callbacks for new listeners
-        signalingService.onNewListener = (listenerId, userName) async {
-          debugPrint('[BroadcasterScreen] New listener: $listenerId ($userName)');
-          await webrtcService.handleNewListener(listenerId);
-        };
-        
-        signalingService.onAnswer = (data) async {
-          final listenerId = data['senderId'] as String?;
-          final answer = data['answer'] as Map<String, dynamic>?;
-          
-          if (listenerId != null && answer != null) {
-            final sdp = answer['sdp'] as String;
-            final type = answer['type'] as String;
-            await webrtcService.handleAnswer(
-              listenerId,
-              RTCSessionDescription(sdp, type),
-            );
-          }
-        };
-        
-        debugPrint('[BroadcasterScreen] Broadcasting started successfully');
-      } else {
-        debugPrint('[BroadcasterScreen] No audio stream available');
+    try {      
+      debugPrint('[BroadcasterScreen] Requesting MediaProjection permission...');
+      
+      // Request permission from user
+      final isConfirmed = await SystemAudioRecorder.requestRecord(
+        titleNotification: 'Music Sharer Broadcasting',
+        messageNotification: 'Sharing system audio with listeners',
+      );
+      
+      debugPrint('[BroadcasterScreen] Permission result: $isConfirmed');
+      
+      if (!isConfirmed) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Audio stream not available')),
+            const SnackBar(
+              content: Text('Screen capture permission required to broadcast audio'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          // Return to home screen
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+      
+      debugPrint('[BroadcasterScreen] Starting audio recording in stream mode...');
+      
+      // Start recording to stream (not file)
+      final isStarted = await SystemAudioRecorder.startRecord(
+        toStream: true,
+        toFile: false,
+        filePath: null,
+      );
+      
+      if (!isStarted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to start audio recording')),
+          );
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+      
+      setState(() => _isRecording = true);
+      
+      debugPrint('[BroadcasterScreen] Audio recording started, setting up stream...');
+      
+      // Subscribe to the audio stream
+      final audioStream = SystemAudioRecorder.audioStream.receiveBroadcastStream({});
+      
+      // Create a stream controller to convert dynamic stream to Uint8List
+      final StreamController<Uint8List> audioStreamController = StreamController<Uint8List>();
+      
+      _audioStreamSubscription = audioStream.listen(
+        (dynamic data) {
+          if (data is Uint8List || data is List<int>) {
+            final Uint8List audioData = data is Uint8List ? data : Uint8List.fromList(data as List<int>);
+            
+            // Calculate audio levels for visualizer
+            _calculateAudioLevels(audioData);
+            
+            // Check for blocked audio
+            _checkForBlockedAudio(audioData);
+            
+            // Forward to WebRTC
+            audioStreamController.add(audioData);
+          }
+        },
+        onError: (error) {
+          debugPrint('[BroadcasterScreen] Audio stream error: $error');
+        },
+        cancelOnError: false,
+      );
+      
+      // Set up WebRTC callbacks BEFORE starting broadcast
+      webrtcService.onOffer = (String listenerId, RTCSessionDescription offer) {
+        debugPrint('[BroadcasterScreen] Sending offer to listener $listenerId');
+        signalingService.sendOffer(listenerId, {
+          'sdp': offer.sdp,
+          'type': offer.type,
+        });
+      };
+      
+      webrtcService.onBroadcasterIceCandidate = (String listenerId, RTCIceCandidate candidate) {
+        debugPrint('[BroadcasterScreen] Sending ICE candidate to listener $listenerId');
+        signalingService.sendBroadcasterIceCandidate(listenerId, {
+          'candidate': candidate.candidate,
+          'sdpMid': candidate.sdpMid,
+          'sdpMLineIndex': candidate.sdpMLineIndex,
+        });
+      };
+      
+      // Start broadcasting with the audio stream
+      await webrtcService.startBroadcast(audioStreamController.stream);
+      
+      // Set up signaling callbacks for new listeners
+      signalingService.onNewListener = (listenerId, userName) async {
+        debugPrint('[BroadcasterScreen] New listener: $listenerId ($userName)');
+        await webrtcService.handleNewListener(listenerId);
+      };
+      
+      signalingService.onAnswer = (data) async {
+        final listenerId = data['senderId'] as String?;
+        final answer = data['answer'] as Map<String, dynamic>?;
+        
+        if (listenerId != null && answer != null) {
+          final sdp = answer['sdp'] as String;
+          final type = answer['type'] as String;
+          await webrtcService.handleAnswer(
+            listenerId,
+            RTCSessionDescription(sdp, type),
           );
         }
-      }
-    } catch (e) {
+      };
+      
+      debugPrint('[BroadcasterScreen] Broadcasting started successfully');
+    } catch (e, stackTrace) {
       debugPrint('[BroadcasterScreen] Error starting broadcast: $e');
+      debugPrint('[BroadcasterScreen] Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
         );
+        Navigator.of(context).pop();
+      }
+    }
+  }
+  
+  /// Check audio levels and update indicators
+  void _checkForBlockedAudio(Uint8List audioData) {
+    // Calculate average level
+    double totalLevel = 0.0;
+    for (final level in _audioLevels) {
+      totalLevel += level;
+    }
+    double avgLevel = totalLevel / _audioLevels.length;
+    
+    // Update current audio level
+    if (mounted) {
+      setState(() {
+        _currentAudioLevel = avgLevel;
+      });
+    }
+    
+    // If average level is very low (< 0.01)
+    if (avgLevel < 0.01) {
+      _zeroAudioCounter++;
+      // After 30 checks (~3 seconds at 10 checks/sec), show low audio indicator
+      if (_zeroAudioCounter > 30) {
+        if (!_lowAudioDetected && mounted) {
+          setState(() => _lowAudioDetected = true);
+        }
+      }
+    } else {
+      // Reset counter when real audio detected
+      _zeroAudioCounter = 0;
+      if (_lowAudioDetected && mounted) {
+        setState(() => _lowAudioDetected = false);
       }
     }
   }
@@ -121,9 +219,12 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
   @override
   void dispose() {
     _visualizerController.dispose();
-    _audioLevelSubscription?.cancel();
+    _audioStreamSubscription?.cancel();
+    // Stop recording if still active
+    if (_isRecording) {
+      SystemAudioRecorder.stopRecord();
+    }
     // Note: WebRTC and signaling cleanup is handled by their respective services
-    // when the user navigates away from this screen
     super.dispose();
   }
   
@@ -191,10 +292,14 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
     final appState = context.read<AppState>();
     final signalingService = context.read<SignalingService>();
     final webrtcService = context.read<WebRTCService>();
-    final audioCaptureService = context.read<AudioCaptureService>();
 
+    // Stop system audio recording
+    if (_isRecording) {
+      await SystemAudioRecorder.stopRecord();
+      setState(() => _isRecording = false);
+    }
+    
     await webrtcService.stopBroadcast();
-    await audioCaptureService.stopCapture();
     signalingService.leaveRoom();
     appState.resetState();
 
@@ -322,7 +427,7 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
                   ),
                   const SizedBox(height: 24),
 
-                  // Status indicator
+                  // Status indicator with audio level
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -331,22 +436,55 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
                       borderRadius: BorderRadius.circular(30),
                       border: Border.all(color: Colors.green, width: 2),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.fiber_manual_record,
+                        const Icon(Icons.fiber_manual_record,
                             color: Colors.green, size: 16),
-                        SizedBox(width: 8),
-                        Text(
-                          'Capturing System Audio',
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Capturing',
                           style: TextStyle(
                             color: Colors.green,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                        const SizedBox(width: 12),
+                        Text(
+                          '${(_currentAudioLevel * 100).toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            color: Colors.green.shade300,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  // Low audio warning (simple indicator)
+                  if (_lowAudioDetected)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.orange.shade700, width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.orange.shade300, size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Low/No audio detected - Some apps may block capture',
+                            style: TextStyle(
+                              color: Colors.orange.shade300,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: 16),
 
                   // Listener count
