@@ -14,6 +14,9 @@ dependencies:
   web_socket_channel: ^3.0.1
   provider: ^6.1.2
   shared_preferences: ^2.3.5
+  audioplayers: ^6.1.0
+  path_provider: ^2.1.5
+  system_audio_recorder: ^0.0.1
 
 dev_dependencies:
   flutter_test:

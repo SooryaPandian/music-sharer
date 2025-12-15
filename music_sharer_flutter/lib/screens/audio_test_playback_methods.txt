@@ -1,0 +1,35 @@
+  Future<void> _playRecording() async {
+    if (_recordingPath == null) return;
+    
+    try {
+      debugPrint('[AudioTest] ========== Playing Recording ==========');
+      debugPrint('[AudioTest] File: $_recordingPath');
+      
+      await _audioPlayer.play(DeviceFileSource(_recordingPath!));
+      debugPrint('[AudioTest] Playback started');
+    } catch (e) {
+      debugPrint('[AudioTest] ❌ Playback error: $e');
+      _showError('Playback error: $e');
+    }
+  }
+  
+  Future<void> _pauseRecording() async {
+    try {
+      await _audioPlayer.pause();
+      debugPrint('[AudioTest] Playback paused');
+    } catch (e) {
+      debugPrint('[AudioTest] ❌ Pause error: $e');
+    }
+  }
+  
+  Future<void> _stopPlayback() async {
+    try {
+      await _audioPlayer.stop();
+      setState(() {
+        _playbackPosition = Duration.zero;
+      });
+      debugPrint('[AudioTest] Playback stopped');
+    } catch (e) {
+      debugPrint('[AudioTest] ❌ Stop error: $e');
+    }
+  }
