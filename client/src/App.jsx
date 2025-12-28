@@ -68,32 +68,25 @@ export default function App() {
 
   // Initialize WebSocket and register handlers
   useEffect(() => {
-    console.log('[App] Initializing WebSocket handlers...');
-
     // Register WebSocket message handlers
     registerHandler('room-created', (data) => {
-      console.log('[App] Handler: room-created', data);
       setRoomCode(data.roomCode);
       setCurrentScreen('broadcaster');
     });
 
     registerHandler('room-joined', (data) => {
-      console.log('[App] Handler: room-joined', data);
       setRoomCode(data.roomCode);
       setCurrentScreen('listener');
       // Update listeners list if provided
       if (data.listeners) {
-        console.log('[App] Setting initial listeners list:', data.listeners);
         setListeners(data.listeners);
         setListenerCount(data.listeners.length);
       }
     });
 
     registerHandler('new-listener', async (data) => {
-      console.log('[App] Handler: new-listener', data);
       // Update listeners list from server
       if (data.listeners) {
-        console.log('[App] Updating listeners list:', data.listeners);
         setListeners(data.listeners);
         setListenerCount(data.listeners.length);
       }
@@ -101,46 +94,36 @@ export default function App() {
     });
 
     registerHandler('offer', async (data) => {
-      console.log('[App] Handler: offer', data);
       await handleOffer(data, audioRef, (stream) => {
         // Audio ready callback
-        console.log('[App] Audio stream ready');
       });
     });
 
     registerHandler('answer', async (data) => {
-      console.log('[App] Handler: answer', data);
       await handleAnswer(data);
     });
 
     registerHandler('ice-candidate', async (data) => {
-      console.log('[App] Handler: ice-candidate', data);
-      console.log('[App] Current role:', roleRef.current);
       await handleIceCandidate(data, roleRef.current);
     });
 
     registerHandler('broadcaster-left', () => {
-      console.log('[App] Handler: broadcaster-left');
       setConnectionStatus('disconnected');
     });
 
     registerHandler('broadcaster-disconnected', () => {
-      console.log('[App] Handler: broadcaster-disconnected');
       setConnectionStatus('disconnected');
     });
 
     registerHandler('listener-left', (data) => {
-      console.log('[App] Handler: listener-left', data);
       // Update listeners list from server
       if (data.listeners) {
-        console.log('[App] Updating listeners list:', data.listeners);
         setListeners(data.listeners);
         setListenerCount(data.listeners.length);
       }
     });
 
     registerHandler('chat-message', (data) => {
-      console.log('[App] Handler: chat-message', data);
       addMessage({
         senderId: data.senderId,
         senderName: data.senderName,
@@ -154,22 +137,18 @@ export default function App() {
       alert(data.message);
       setCurrentScreen('home');
     });
-
-    console.log('[App] Handlers registered successfully');
   }, [registerHandler, handleNewListener, handleOffer, handleAnswer, handleIceCandidate, addMessage]);
 
   // Check server health and initialize WebSocket connection once on mount
   const initializeConnection = useCallback(async () => {
     try {
       setServerStatus('checking');
-      console.log('[App] Checking server health...');
 
       // Wait for server to be ready
       await waitForServerReady((elapsed) => {
         setElapsedTime(elapsed);
       });
 
-      console.log('[App] Server is ready, connecting to WebSocket...');
       setServerStatus('ready');
 
       // Connect to WebSocket
@@ -178,7 +157,6 @@ export default function App() {
       // Check URL for room code
       const urlRoomCode = checkUrlForRoom();
       if (urlRoomCode) {
-        console.log('[App] Room code found in URL:', urlRoomCode);
         roomCodeInputRef.current = urlRoomCode;
         // Show join modal
         openNameModal('join', (context) => {

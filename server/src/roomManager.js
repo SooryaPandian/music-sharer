@@ -26,8 +26,6 @@ function createRoom(ws) {
 
   ws.roomCode = roomCode;
   ws.role = "broadcaster";
-  
-  console.log(`[ROOM_MANAGER] Room created: ${roomCode}`);
 
   return roomCode;
 }
@@ -48,10 +46,6 @@ function joinRoom(ws, roomCode, userName) {
       error: "Room not found",
     };
   }
-
-  // Allow joining even if broadcaster is temporarily disconnected
-  // (they may reconnect later within the persistence timeout)
-  console.log(`[ROOM_MANAGER] User ${userName} joining room ${roomCode}, broadcaster present: ${!!room.broadcaster}`);
 
   // Generate listener ID
   const { getClientId } = require("./utils");
@@ -107,8 +101,6 @@ function leaveRoom(ws) {
     room.broadcaster = null;
     room.abandonedAt = Date.now();
     room.lastActivityAt = Date.now();
-    
-    console.log(`[ROOM_MANAGER] Broadcaster left room ${roomCode}, room marked as abandoned but will persist`);
   } else if (role === "listener") {
     // Get listener info before removing
     removedListener = room.listeners.get(ws);
@@ -118,7 +110,6 @@ function leaveRoom(ws) {
     // If all users have left, mark room as abandoned
     if (!room.broadcaster && room.listeners.size === 0) {
       room.abandonedAt = Date.now();
-      console.log(`[ROOM_MANAGER] All users left room ${roomCode}, marked as abandoned but will persist`);
     }
   }
 
@@ -148,7 +139,6 @@ function cleanupOldRooms(persistenceTimeout) {
     if (room.abandonedAt && (now - room.abandonedAt > persistenceTimeout)) {
       rooms.delete(roomCode);
       cleanedCount++;
-      console.log(`[ROOM_MANAGER] Cleaned up abandoned room ${roomCode}`);
     }
   });
 

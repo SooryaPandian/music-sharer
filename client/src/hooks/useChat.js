@@ -26,7 +26,6 @@ export function useChat() {
             message: messageText.trim(),
         };
 
-        console.log('[useChat] Sending chat message:', message);
         wsRef.current.send(JSON.stringify(message));
     }, [wsRef, roomCode, userName]);
 

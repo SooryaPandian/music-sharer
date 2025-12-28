@@ -1,9 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { getBrowserCapabilities } from '../utils/browserDetection';
 
 export default function HomeScreen({ onCreateRoom, onJoinRoom }) {
     const { userName, openNameModal } = useAppContext();
     const [roomCodeInput, setRoomCodeInput] = useState('');
+    const [capabilities, setCapabilities] = useState(null);
+
+    // Detect browser capabilities on mount
+    useEffect(() => {
+        const caps = getBrowserCapabilities();
+        setCapabilities(caps);
+    }, []);
 
     const handleCreateClick = () => {
         if (!userName) {
@@ -56,20 +64,33 @@ export default function HomeScreen({ onCreateRoom, onJoinRoom }) {
             </div>
 
             <div className="flex flex-col gap-4">
-                {/* Create Room Button */}
-                <button
-                    onClick={handleCreateClick}
-                    className="w-full py-4 px-8 border-none rounded-lg text-base font-semibold cursor-pointer transition-all uppercase tracking-wider gradient-primary text-white shadow-[0_4px_15px_rgba(102,126,234,0.4)] hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(102,126,234,0.6)] btn-ripple relative overflow-hidden"
-                >
-                    <span className="relative z-10">🎙️ Create Room & Share Audio</span>
-                </button>
+                {/* Create Room Button - Only show if browser supports it */}
+                {capabilities?.canBroadcast && (
+                    <>
+                        <button
+                            onClick={handleCreateClick}
+                            className="w-full py-4 px-8 border-none rounded-lg text-base font-semibold cursor-pointer transition-all uppercase tracking-wider gradient-primary text-white shadow-[0_4px_15px_rgba(102,126,234,0.4)] hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(102,126,234,0.6)] btn-ripple relative overflow-hidden"
+                        >
+                            <span className="relative z-10">🎙️ Create Room & Share Audio</span>
+                        </button>
 
-                {/* Divider */}
-                <div className="flex items-center gap-4 my-8 text-white/70 text-sm uppercase tracking-widest">
-                    <span className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                    <span>or</span>
-                    <span className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                </div>
+                        {/* Divider */}
+                        <div className="flex items-center gap-4 my-8 text-white/70 text-sm uppercase tracking-widest">
+                            <span className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                            <span>or</span>
+                            <span className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                        </div>
+                    </>
+                )}
+
+                {/* Informational message for unsupported browsers/mobile */}
+                {capabilities && !capabilities.canBroadcast && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 mb-6">
+                        <p className="text-amber-200 text-sm text-center">
+                            {capabilities.message}
+                        </p>
+                    </div>
+                )}
 
                 {/* Join Room Input */}
                 <div className="mb-6">
