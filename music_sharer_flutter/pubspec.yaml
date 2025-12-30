@@ -1,5 +1,5 @@
 name: music_sharer_flutter
-description: "Flutter app to listen to WebRTC audio broadcasts from Music Sharer"
+description: "Flutter app to listen to WebRTC audio broadcasts from VibeP2P"
 publish_to: 'none'
 version: 1.0.0+1
 

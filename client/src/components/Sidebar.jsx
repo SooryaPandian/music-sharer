@@ -13,8 +13,10 @@ export default function Sidebar() {
         <div className="glass-card rounded-2xl p-6 h-full flex flex-col">
             {/* App Logo & Name */}
             <div className="text-center mb-4 pb-4 border-b border-white/10">
-                <div className="text-4xl mb-3 animate-pulse-logo">🎵</div>
-                <h1 className="text-2xl font-bold gradient-text">Music Sharer</h1>
+                <div className="mb-3 animate-pulse-logo flex justify-center">
+                    <img src="/logo.png" alt="VibeP2P Logo" className="h-16 w-16" />
+                </div>
+                <h1 className="text-2xl font-bold gradient-text">VibeP2P</h1>
                 <p className="text-sm text-white/60 mt-2">
                     Share your music in real-time
                 </p>

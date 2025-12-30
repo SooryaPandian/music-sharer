@@ -1,5 +1,5 @@
 /**
- * Utility functions for the music sharer server
+ * Utility functions for the VibeP2P server
  */
 
 /**

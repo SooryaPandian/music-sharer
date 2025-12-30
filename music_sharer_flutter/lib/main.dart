@@ -29,7 +29,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => WebRTCService()),
       ],
       child: MaterialApp(
-        title: 'Music Sharer',
+        title: 'VibeP2P',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,

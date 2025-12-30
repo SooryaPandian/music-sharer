@@ -50,7 +50,7 @@ setInterval(() => {
 }, config.CLEANUP_INTERVAL);
 
 server.listen(config.PORT, config.HOST, () => {
-  console.log(`[SERVER] Music Sharer server running on http://${config.HOST}:${config.PORT}`);
+  console.log(`[SERVER] VibeP2P server running on http://${config.HOST}:${config.PORT}`);
   console.log(`[SERVER] Room persistence timeout: ${config.ROOM_PERSISTENCE_TIMEOUT / 1000 / 60} minutes`);
 });
  

@@ -169,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Music Sharer'),
+        title: const Text('VibeP2P'),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -219,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 
                 // Title
                 const Text(
-                  'Music Sharer',
+                  'VibeP2P',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,

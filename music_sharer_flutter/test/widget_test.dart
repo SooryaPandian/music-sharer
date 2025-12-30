@@ -1,4 +1,4 @@
-// Basic widget test for Music Sharer Flutter app
+// Basic widget test for VibeP2P Flutter app
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

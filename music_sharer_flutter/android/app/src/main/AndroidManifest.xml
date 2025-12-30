@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" android:minSdkVersion="34"/>
     
     <application
-        android:label="music_sharer_flutter"
+        android:label="VibeP2P"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -1,6 +1,6 @@
 /**
  * Server Configuration
- * Centralized configuration for the music sharer server
+ * Centralized configuration for the VibeP2P server
  */
 
 module.exports = {
