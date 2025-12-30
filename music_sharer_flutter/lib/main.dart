@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/signaling_service.dart';
 import 'services/webrtc_service.dart';
-import 'services/audio_capture_service.dart';
 import 'state/app_state.dart';
 import 'screens/home_screen.dart';
 
@@ -28,7 +27,6 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AppState()),
         ChangeNotifierProvider(create: (_) => SignalingService(prefs)),
         ChangeNotifierProvider(create: (_) => WebRTCService()),
-        ChangeNotifierProvider(create: (_) => AudioCaptureService()),
       ],
       child: MaterialApp(
         title: 'Music Sharer',

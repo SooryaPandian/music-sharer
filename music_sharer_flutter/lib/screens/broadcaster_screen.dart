@@ -1,17 +1,15 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:provider/provider.dart';
-import 'package:system_audio_recorder/system_audio_recorder.dart';
 import '../state/app_state.dart';
 import '../services/signaling_service.dart';
 import '../services/webrtc_service.dart';
 import '../widgets/chat_widget.dart';
 import '../widgets/users_list_widget.dart';
 
-/// Broadcaster screen for sharing system audio
+/// Broadcaster screen for sharing microphone audio
 class BroadcasterScreen extends StatefulWidget {
   const BroadcasterScreen({super.key});
 
@@ -24,16 +22,9 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
   late AnimationController _visualizerController;
   bool _showChat = false;
   bool _showUsers = false;
-  bool _isRecording = false;
   
-  // Real-time audio levels for visualizer
+  // Visualizer animation
   List<double> _audioLevels = List.filled(20, 0.0);
-  StreamSubscription? _audioStreamSubscription;
-  
-  // Audio level monitoring
-  double _currentAudioLevel = 0.0;
-  bool _lowAudioDetected = false;
-  int _zeroAudioCounter = 0;
 
   @override
   void initState() {
@@ -42,6 +33,24 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
       vsync: this,
       duration: const Duration(milliseconds: 100),
     )..repeat();
+    
+    // Animate visualizer bars
+    Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (mounted) {
+        final webrtcService = context.read<WebRTCService>();
+        if (webrtcService.isBroadcasting && !webrtcService.isBroadcastMuted) {
+          setState(() {
+            _audioLevels = List.generate(20, (_) => Random().nextDouble());
+          });
+        } else {
+          setState(() {
+            _audioLevels = List.filled(20, 0.0);
+          });
+        }
+      } else {
+        timer.cancel();
+      }
+    });
     
     // Start WebRTC broadcasting
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -53,80 +62,8 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
     final webrtcService = context.read<WebRTCService>();
     final signalingService = context.read<SignalingService>();
     
-    try {      
-      debugPrint('[BroadcasterScreen] Requesting MediaProjection permission...');
-      
-      // Request permission from user
-      final isConfirmed = await SystemAudioRecorder.requestRecord(
-        titleNotification: 'Music Sharer Broadcasting',
-        messageNotification: 'Sharing system audio with listeners',
-      );
-      
-      debugPrint('[BroadcasterScreen] Permission result: $isConfirmed');
-      
-      if (!isConfirmed) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Screen capture permission required to broadcast audio'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-          // Return to home screen
-          Navigator.of(context).pop();
-        }
-        return;
-      }
-      
-      debugPrint('[BroadcasterScreen] Starting audio recording in stream mode...');
-      
-      // Start recording to stream (not file)
-      final isStarted = await SystemAudioRecorder.startRecord(
-        toStream: true,
-        toFile: false,
-        filePath: null,
-      );
-      
-      if (!isStarted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to start audio recording')),
-          );
-          Navigator.of(context).pop();
-        }
-        return;
-      }
-      
-      setState(() => _isRecording = true);
-      
-      debugPrint('[BroadcasterScreen] Audio recording started, setting up stream...');
-      
-      // Subscribe to the audio stream
-      final audioStream = SystemAudioRecorder.audioStream.receiveBroadcastStream({});
-      
-      // Create a stream controller to convert dynamic stream to Uint8List
-      final StreamController<Uint8List> audioStreamController = StreamController<Uint8List>();
-      
-      _audioStreamSubscription = audioStream.listen(
-        (dynamic data) {
-          if (data is Uint8List || data is List<int>) {
-            final Uint8List audioData = data is Uint8List ? data : Uint8List.fromList(data as List<int>);
-            
-            // Calculate audio levels for visualizer
-            _calculateAudioLevels(audioData);
-            
-            // Check for blocked audio
-            _checkForBlockedAudio(audioData);
-            
-            // Forward to WebRTC
-            audioStreamController.add(audioData);
-          }
-        },
-        onError: (error) {
-          debugPrint('[BroadcasterScreen] Audio stream error: $error');
-        },
-        cancelOnError: false,
-      );
+    try {
+      debugPrint('[BroadcasterScreen] Requesting microphone permission...');
       
       // Set up WebRTC callbacks BEFORE starting broadcast
       webrtcService.onOffer = (String listenerId, RTCSessionDescription offer) {
@@ -146,8 +83,8 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
         });
       };
       
-      // Start broadcasting with the audio stream
-      await webrtcService.startBroadcast(audioStreamController.stream);
+      // Start broadcasting with microphone
+      await webrtcService.startBroadcast();
       
       // Set up signaling callbacks for new listeners
       signalingService.onNewListener = (listenerId, userName) async {
@@ -170,48 +107,27 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
       };
       
       debugPrint('[BroadcasterScreen] Broadcasting started successfully');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🎙️ Broadcasting your voice'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e, stackTrace) {
       debugPrint('[BroadcasterScreen] Error starting broadcast: $e');
       debugPrint('[BroadcasterScreen] Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(
+            content: Text('Microphone error: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
         Navigator.of(context).pop();
-      }
-    }
-  }
-  
-  /// Check audio levels and update indicators
-  void _checkForBlockedAudio(Uint8List audioData) {
-    // Calculate average level
-    double totalLevel = 0.0;
-    for (final level in _audioLevels) {
-      totalLevel += level;
-    }
-    double avgLevel = totalLevel / _audioLevels.length;
-    
-    // Update current audio level
-    if (mounted) {
-      setState(() {
-        _currentAudioLevel = avgLevel;
-      });
-    }
-    
-    // If average level is very low (< 0.01)
-    if (avgLevel < 0.01) {
-      _zeroAudioCounter++;
-      // After 30 checks (~3 seconds at 10 checks/sec), show low audio indicator
-      if (_zeroAudioCounter > 30) {
-        if (!_lowAudioDetected && mounted) {
-          setState(() => _lowAudioDetected = true);
-        }
-      }
-    } else {
-      // Reset counter when real audio detected
-      _zeroAudioCounter = 0;
-      if (_lowAudioDetected && mounted) {
-        setState(() => _lowAudioDetected = false);
       }
     }
   }
@@ -219,61 +135,9 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
   @override
   void dispose() {
     _visualizerController.dispose();
-    _audioStreamSubscription?.cancel();
-    // Stop recording if still active
-    if (_isRecording) {
-      SystemAudioRecorder.stopRecord();
-    }
-    // Note: WebRTC and signaling cleanup is handled by their respective services
     super.dispose();
   }
   
-  /// Calculate audio levels from PCM data for visualizer
-  void _calculateAudioLevels(Uint8List audioData) {
-    // Calculate RMS (Root Mean Square) for audio visualization
-    // PCM 16-bit stereo at 48kHz
-    const int bytesPerSample = 2; // 16-bit = 2 bytes
-    const int channels = 2; // Stereo
-    const int samplesPerBar = 2048; // Samples to average per bar
-    
-    List<double> newLevels = [];
-    
-    for (int barIndex = 0; barIndex < 20; barIndex++) {
-      int startByte = barIndex * samplesPerBar * bytesPerSample * channels;
-      if (startByte >= audioData.length) {
-        newLevels.add(0.0);
-        continue;
-      }
-      
-      double sum = 0.0;
-      int sampleCount = 0;
-      
-      for (int i = startByte; i < audioData.length && i < startByte + (samplesPerBar * bytesPerSample * channels); i += bytesPerSample) {
-        // Read 16-bit signed PCM sample
-        if (i + 1 < audioData.length) {
-          int sample = (audioData[i + 1] << 8) | audioData[i];
-          // Convert to signed
-          if (sample > 32767) sample -= 65536;
-          // Normalize to 0-1 range
-          double normalized = sample.abs() / 32768.0;
-          sum += normalized * normalized;
-          sampleCount++;
-        }
-      }
-      
-      // Calculate RMS and apply smoothing
-      double rms = sampleCount > 0 ? sqrt(sum / sampleCount) : 0.0;
-      // Apply some gain to make visualization more visible
-      rms = (rms * 2.0).clamp(0.0, 1.0);
-      newLevels.add(rms);
-    }
-    
-    if (mounted) {
-      setState(() {
-        _audioLevels = newLevels;
-      });
-    }
-  }
   void _toggleChat() {
     setState(() {
       _showChat = !_showChat;
@@ -293,12 +157,6 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
     final signalingService = context.read<SignalingService>();
     final webrtcService = context.read<WebRTCService>();
 
-    // Stop system audio recording
-    if (_isRecording) {
-      await SystemAudioRecorder.stopRecord();
-      setState(() => _isRecording = false);
-    }
-    
     await webrtcService.stopBroadcast();
     signalingService.leaveRoom();
     appState.resetState();
@@ -411,7 +269,6 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
                           // Share URL button
                           OutlinedButton.icon(
                             onPressed: () {
-                              // TODO: Implement share URL
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('Room code copied!'),
@@ -427,64 +284,29 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
                   ),
                   const SizedBox(height: 24),
 
-                  // Status indicator with audio level
+                  // Status indicator
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     decoration: BoxDecoration(
                       color: Colors.green.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(30),
                       border: Border.all(color: Colors.green, width: 2),
                     ),
-                    child: Row(
+                    child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.fiber_manual_record,
-                            color: Colors.green, size: 16),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Capturing',
+                        Icon(Icons.mic, color: Colors.green, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Microphone Active',
                           style: TextStyle(
                             color: Colors.green,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '${(_currentAudioLevel * 100).toStringAsFixed(0)}%',
-                          style: TextStyle(
-                            color: Colors.green.shade300,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  // Low audio warning (simple indicator)
-                  if (_lowAudioDetected)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.orange.shade700, width: 1),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.info_outline, color: Colors.orange.shade300, size: 16),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Low/No audio detected - Some apps may block capture',
-                            style: TextStyle(
-                              color: Colors.orange.shade300,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   const SizedBox(height: 16),
 
                   // Listener count
@@ -503,7 +325,7 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
 
                   // Audio visualizer
                   Expanded(
-                    child: _buildAudioVisualizer(webrtcService.isBroadcasting),
+                    child: _buildAudioVisualizer(webrtcService.isBroadcasting && !webrtcService.isBroadcastMuted),
                   ),
                   const SizedBox(height: 32),
 
@@ -511,7 +333,7 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Pause/Resume button
+                      // Mute/Unmute button
                       ElevatedButton.icon(
                         onPressed: () => webrtcService.toggleBroadcastMute(),
                         style: ElevatedButton.styleFrom(
@@ -524,10 +346,10 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
                           ),
                         ),
                         icon: Icon(webrtcService.isBroadcastMuted
-                            ? Icons.play_arrow
-                            : Icons.pause),
+                            ? Icons.mic_off
+                            : Icons.mic),
                         label: Text(
-                            webrtcService.isBroadcastMuted ? 'Resume' : 'Pause'),
+                            webrtcService.isBroadcastMuted ? 'Unmute' : 'Mute'),
                       ),
                       const SizedBox(width: 16),
                       // Stop button
@@ -567,7 +389,7 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
           child: Column(
             children: [
               const Text(
-                '🎵',
+                '🎙️',
                 style: TextStyle(fontSize: 48),
               ),
               const SizedBox(height: 20),
@@ -583,7 +405,7 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
               ),
               const SizedBox(height: 16),
               Text(
-                isActive ? 'Broadcasting...' : 'Paused',
+                isActive ? 'Broadcasting your voice...' : 'Muted',
                 style: TextStyle(
                   color: isActive ? Colors.white : Colors.grey.shade500,
                   fontWeight: FontWeight.w500,
@@ -597,14 +419,13 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
   }
 
   Widget _buildVisualizerBar(int index, bool isActive) {
-    // Use real audio levels instead of random values
     final double audioLevel = index < _audioLevels.length ? _audioLevels[index] : 0.0;
     final height = isActive
-        ? 0.1 + audioLevel * 0.9  // Real audio level (0.1 to 1.0)
-        : 0.05;  // Minimal height when paused
+        ? 0.1 + audioLevel * 0.9
+        : 0.05;
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 50),  // Faster response for real-time feel
+      duration: const Duration(milliseconds: 50),
       width: 8,
       height: 150 * height,
       decoration: BoxDecoration(
@@ -613,8 +434,8 @@ class _BroadcasterScreenState extends State<BroadcasterScreen>
           end: Alignment.topCenter,
           colors: isActive
               ? [
-                  Color(0xFF6366F1),
-                  audioLevel > 0.7 ? Color(0xFFEF4444) : Color(0xFFA855F7),  // Red for high levels
+                  const Color(0xFF6366F1),
+                  audioLevel > 0.7 ? const Color(0xFFEF4444) : const Color(0xFFA855F7),
                 ]
               : [
                   Colors.grey.shade800,

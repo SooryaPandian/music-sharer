@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/signaling_service.dart';
 import '../services/webrtc_service.dart';
-import '../services/audio_capture_service.dart';
 import '../state/app_state.dart';
 import '../widgets/name_dialog.dart';
 import 'broadcaster_screen.dart';
 import 'listener_screen.dart';
 import 'settings_screen.dart';
-import 'audio_test_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -173,17 +171,6 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Music Sharer'),
         actions: [
-          // Debug test button
-          IconButton(
-            icon: const Icon(Icons.science_outlined),
-            tooltip: 'Audio Test',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AudioTestScreen()),
-              );
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {

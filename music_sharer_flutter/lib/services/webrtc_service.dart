@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -27,17 +26,9 @@ class WebRTCService extends ChangeNotifier {
   
   // Broadcaster mode (multiple peer connections)
   final Map<String, RTCPeerConnection> _listenerConnections = {};
-  final Map<String, RTCDataChannel> _listenerDataChannels = {};  // Data channels for audio streaming
   MediaStream? _localStream;
   bool _isBroadcasting = false;
   bool _isBroadcastMuted = false;
-  
-  // Audio stream subscription for system audio
-  StreamSubscription<Uint8List>? _audioStreamSubscription;
-  
-  // Broadcast heartbeat to keep connection alive
-  Timer? _broadcastHeartbeatTimer;
-  Uint8List? _lastAudioData;
   
   WebRTCState _state = WebRTCState.idle;
   RTCVideoRenderer? _attachedRenderer;
@@ -51,13 +42,12 @@ class WebRTCService extends ChangeNotifier {
   // Headphone connection state
   bool _isHeadphonesConnected = false;
 
-  // ICE server configuration with STUN and TURN (matching web app)
+  // ICE server configuration with STUN
   final Map<String, dynamic> _iceServers = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
     ],
-    // Use unified-plan (matches modern browser behavior used by the JS broadcaster)
     'sdpSemantics': 'unified-plan',
   };
 
@@ -78,13 +68,8 @@ class WebRTCService extends ChangeNotifier {
   // Callbacks for signaling (broadcaster mode)
   Function(String listenerId, RTCSessionDescription offer)? onOffer;
   Function(String listenerId, RTCIceCandidate candidate)? onBroadcasterIceCandidate;
-  
-  // Audio configuration for system audio
-  static const int audioSampleRate = 48000;
-  static const int audioChannels = 2;  // Stereo
-  static const int audioBitsPerSample = 16;
 
-  /// Initialize WebRTC peer connection
+  /// Initialize WebRTC peer connection (listener mode)
   Future<void> initialize() async {
     debugPrint('[WebRTCService] Initializing peer connection');
     
@@ -94,7 +79,7 @@ class WebRTCService extends ChangeNotifier {
     });
     _state = WebRTCState.idle;
 
-  // Handle incoming tracks
+    // Handle incoming tracks
     _peerConnection!.onTrack = (RTCTrackEvent event) {
       debugPrint('[WebRTCService] Received track: ${event.track.kind}');
       if (event.streams.isNotEmpty) {
@@ -117,13 +102,9 @@ class WebRTCService extends ChangeNotifier {
 
     // Handle ICE candidates
     _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
-      debugPrint('[WebRTCService] Local ICE candidate: ${candidate.candidate}');
+      debugPrint('[WebRTCService] Local ICE candidate');
       onIceCandidate?.call(candidate);
     };
-
-    // Note: some flutter_webrtc versions have differing addTransceiver signatures.
-    // We rely on unified-plan + offerToReceiveAudio in createAnswer to ensure
-    // the resulting SDP includes recvonly audio so browser sender can attach.
 
     // Handle connection state changes
     _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
@@ -147,17 +128,10 @@ class WebRTCService extends ChangeNotifier {
       notifyListeners();
     };
 
-    // Handle ICE connection state
-    _peerConnection!.onIceConnectionState = (RTCIceConnectionState state) {
-      debugPrint('[WebRTCService] ICE connection state: $state');
-    };
-
     notifyListeners();
   }
 
-  /// Attach an `RTCVideoRenderer` to play incoming audio/video streams.
-  /// For audio-only streams the renderer.srcObject still accepts the stream
-  /// and ensures WebRTC audio is routed to the platform audio output.
+  /// Attach an RTCVideoRenderer to play incoming audio streams
   void attachRenderer(RTCVideoRenderer renderer) {
     _attachedRenderer = renderer;
     if (_remoteStream != null) {
@@ -165,7 +139,7 @@ class WebRTCService extends ChangeNotifier {
     }
   }
 
-  /// Detach the previously attached renderer.
+  /// Detach the previously attached renderer
   void detachRenderer() {
     if (_attachedRenderer != null) {
       _attachedRenderer!.srcObject = null;
@@ -173,7 +147,7 @@ class WebRTCService extends ChangeNotifier {
     }
   }
 
-  /// Handle incoming SDP offer from broadcaster
+  /// Handle incoming SDP offer from broadcaster (listener mode)
   Future<void> handleOffer(Map<String, dynamic> offerData) async {
     if (_peerConnection == null) {
       await initialize();
@@ -199,7 +173,7 @@ class WebRTCService extends ChangeNotifier {
         'offerToReceiveVideo': false,
       });
 
-      // Prefer Opus and enable stereo in the SDP to match the browser sender
+      // Prefer Opus and enable stereo in the SDP
       String modifiedSdp = _preferOpus(answer.sdp ?? '');
       final modifiedAnswer = RTCSessionDescription(modifiedSdp, answer.type);
       await _peerConnection!.setLocalDescription(modifiedAnswer);
@@ -214,7 +188,7 @@ class WebRTCService extends ChangeNotifier {
     }
   }
 
-  /// Prefer Opus codec and set stereo parameters if possible
+  /// Prefer Opus codec and set stereo parameters
   String _preferOpus(String sdp) {
     if (sdp.isEmpty) return sdp;
 
@@ -249,7 +223,7 @@ class WebRTCService extends ChangeNotifier {
         }
       }
 
-      // Ensure opus fmtp stereo enabled (sprop-stereo and stereo=1)
+      // Ensure opus fmtp stereo enabled
       bool hasFmtp = false;
       for (var i = 0; i < lines.length; i++) {
         if (lines[i].startsWith('a=fmtp:$opusPayload')) {
@@ -262,7 +236,6 @@ class WebRTCService extends ChangeNotifier {
       }
 
       if (!hasFmtp) {
-        // Add a fmtp line for opus right after rtpmap if missing
         for (var i = 0; i < lines.length; i++) {
           if (lines[i].startsWith('a=rtpmap') && lines[i].contains('opus/')) {
             lines.insert(i + 1, 'a=fmtp:$opusPayload stereo=1; sprop-stereo=1');
@@ -278,7 +251,7 @@ class WebRTCService extends ChangeNotifier {
     }
   }
 
-  /// Add ICE candidate from remote peer
+  /// Add ICE candidate from remote peer (listener mode)
   Future<void> addIceCandidate(Map<String, dynamic> candidateData) async {
     if (_peerConnection == null) return;
 
@@ -316,7 +289,7 @@ class WebRTCService extends ChangeNotifier {
     await setAudioOutputMode(newMode);
   }
 
-  /// Toggle mute state
+  /// Toggle mute state (listener mode)
   void toggleMute() {
     _isMuted = !_isMuted;
     _applyMuteState();
@@ -333,13 +306,12 @@ class WebRTCService extends ChangeNotifier {
     }
   }
 
-  /// Check if headphones are connected by enumerating audio output devices
+  /// Check if headphones are connected
   Future<void> checkHeadphones() async {
     try {
       final devices = await navigator.mediaDevices.enumerateDevices();
       final audioOutputs = devices.where((d) => d.kind == 'audiooutput').toList();
       
-      // Check for headphones, bluetooth, or wired headset in device labels
       _isHeadphonesConnected = audioOutputs.any((device) {
         final label = device.label.toLowerCase();
         return label.contains('headphone') ||
@@ -352,7 +324,6 @@ class WebRTCService extends ChangeNotifier {
       
       debugPrint('[WebRTCService] Headphones connected: $_isHeadphonesConnected');
       
-      // If headphones detected, set audio mode to headphones
       if (_isHeadphonesConnected) {
         _audioOutputMode = AudioOutputMode.headphones;
       }
@@ -364,18 +335,15 @@ class WebRTCService extends ChangeNotifier {
     }
   }
 
-  /// Enable appropriate audio output (called on track received)
+  /// Enable appropriate audio output
   Future<void> _enableSpeakerphone() async {
     try {
-      // Check for headphones first
       await checkHeadphones();
       
-      // Only set speakerphone if no headphones connected
       if (!_isHeadphonesConnected) {
         await Helper.setSpeakerphoneOn(_audioOutputMode == AudioOutputMode.speaker);
         debugPrint('[WebRTCService] Speakerphone set to: ${_audioOutputMode == AudioOutputMode.speaker}');
       } else {
-        // Headphones connected - disable speakerphone to use headphones
         await Helper.setSpeakerphoneOn(false);
         debugPrint('[WebRTCService] Using headphones for audio output');
       }
@@ -384,53 +352,26 @@ class WebRTCService extends ChangeNotifier {
     }
   }
 
-  /// Start broadcasting (broadcaster mode) - receives audio stream from platform channel
-  Future<void> startBroadcast(Stream<Uint8List> audioStream) async {
-    debugPrint('[WebRTCService] Starting broadcast with system audio stream');
+  /// Start broadcasting with microphone (broadcaster mode)
+  Future<void> startBroadcast() async {
+    debugPrint('[WebRTCService] Starting broadcast with microphone');
     
     try {
-      // Subscribe to the system audio stream from MediaProjection
-      _audioStreamSubscription = audioStream.listen(
-        (Uint8List audioData) {
-          // Store last audio data for heartbeat
-          _lastAudioData = audioData;
-          // Send audio data to all connected listeners via data channels
-          _sendAudioToListeners(audioData);
+      // Request microphone access
+      final stream = await navigator.mediaDevices.getUserMedia({
+        'audio': {
+          'echoCancellation': true,
+          'noiseSuppression': true,
+          'autoGainControl': true,
+          'sampleRate': 48000,
         },
-        onError: (error) {
-          debugPrint('[WebRTCService] Audio stream error: $error');
-        },
-        cancelOnError: false,
-      );
+      });
       
-      // Start heartbeat timer to ensure continuous transmission
-      // This sends data every 100ms even if audio stream stalls
-      _broadcastHeartbeatTimer?.cancel();
-      _broadcastHeartbeatTimer = Timer.periodic(
-        const Duration(milliseconds: 100),
-        (timer) {
-          // If we haven't received new audio data, send silence or last data
-          if (_isBroadcasting && _listenerDataChannels.isNotEmpty) {
-            if (_lastAudioData != null) {
-              // We have data, send it (or silence if muted)
-              _sendAudioToListeners(_lastAudioData!);
-            } else {
-              // No data yet, send silence (4800 bytes = 100ms at 48kHz stereo 16-bit)
-              final silenceData = Uint8List(4800);
-              _sendAudioToListeners(silenceData);
-            }
-          }
-        },
-      );
-      
-      // Note: We don't need getUserMedia anymore!
-      // The data will be sent through data channels, not audio tracks
-      _localStream = null;  // No local stream needed for data channel approach
-      
+      _localStream = stream;
       _isBroadcasting = true;
       _isBroadcastMuted = false;
-      debugPrint('[WebRTCService] Broadcast started - system audio will stream via data channels');
-      debugPrint('[WebRTCService] Audio config: ${audioSampleRate}Hz, ${audioChannels} channels, ${audioBitsPerSample}-bit');
+      
+      debugPrint('[WebRTCService] Broadcast started with microphone');
       notifyListeners();
     } catch (e) {
       debugPrint('[WebRTCService] Error starting broadcast: $e');
@@ -439,32 +380,13 @@ class WebRTCService extends ChangeNotifier {
       rethrow;
     }
   }
-  
-  /// Send audio data to all connected listeners via data channels
-  void _sendAudioToListeners(Uint8List audioData) {
-    // If muted, send silence instead of actual audio
-    final Uint8List dataToSend = _isBroadcastMuted 
-      ? Uint8List(audioData.length)  // Zero-filled buffer (silence)
-      : audioData;
-    
-    _listenerDataChannels.forEach((listenerId, dataChannel) {
-      try {
-        if (dataChannel.state == RTCDataChannelState.RTCDataChannelOpen) {
-          // Send raw PCM audio bytes (real audio or silence)
-          dataChannel.send(RTCDataChannelMessage.fromBinary(dataToSend));
-        }
-      } catch (e) {
-        debugPrint('[WebRTCService] Error sending audio to $listenerId: $e');
-      }
-    });
-  }
 
   /// Handle new listener joining (broadcaster side)
   Future<void> handleNewListener(String listenerId) async {
     debugPrint('[WebRTCService] New listener connecting: $listenerId');
     
-    if (!_isBroadcasting) {
-      debugPrint('[WebRTCService] Not broadcasting');
+    if (!_isBroadcasting || _localStream == null) {
+      debugPrint('[WebRTCService] Not broadcasting or no local stream');
       return;
     }
     
@@ -477,21 +399,14 @@ class WebRTCService extends ChangeNotifier {
       
       _listenerConnections[listenerId] = pc;
       
-      // Create data channel for audio streaming
-      final RTCDataChannelInit dataChannelConfig = RTCDataChannelInit();
-      dataChannelConfig.ordered = true;  // Ensure ordered delivery
-      dataChannelConfig.maxRetransmits = 0;  // Don't retransmit (prefer fresh data)
+      // Add microphone audio track to peer connection
+      _localStream!.getTracks().forEach((track) {
+        pc.addTrack(track, _localStream!);
+      });
       
-      final dataChannel = await pc.createDataChannel('audio', dataChannelConfig);
-      _listenerDataChannels[listenerId] = dataChannel;
+      debugPrint('[WebRTCService] Added audio track for listener $listenerId');
       
-      dataChannel.onDataChannelState = (state) {
-        debugPrint('[WebRTCService] Data channel state for $listenerId: $state');
-      };
-      
-      debugPrint('[WebRTCService] Created data channel for listener $listenerId');
-      
-      // Handle ICE candidates - send with listener ID
+      // Handle ICE candidates
       pc.onIceCandidate = (RTCIceCandidate candidate) {
         debugPrint('[WebRTCService] ICE candidate for listener $listenerId');
         onBroadcasterIceCandidate?.call(listenerId, candidate);
@@ -503,78 +418,21 @@ class WebRTCService extends ChangeNotifier {
         'offerToReceiveVideo': false,
       });
       
-      // No need to modify SDP for stereo since we're sending raw PCM via data channel
-      await pc.setLocalDescription(offer);
+      // Ensure stereo in SDP
+      String modifiedSdp = _ensureStereoInSDP(offer.sdp ?? '');
+      final modifiedOffer = RTCSessionDescription(modifiedSdp, offer.type);
+      
+      await pc.setLocalDescription(modifiedOffer);
       debugPrint('[WebRTCService] Created and set local description for listener $listenerId');
       
-      // Send offer through signaling via callback
-      onOffer?.call(listenerId, offer);
-      debugPrint('[WebRTCService] Offer sent via callback for listener $listenerId');
+      // Send offer through signaling
+      onOffer?.call(listenerId, modifiedOffer);
+      debugPrint('[WebRTCService] Offer sent for listener $listenerId');
       
       notifyListeners();
     } catch (e) {
       debugPrint('[WebRTCService] Error handling new listener: $e');
     }
-  }
-  
-  /// Handle answer from listener (broadcaster side)
-  Future<void> handleAnswer(String listenerId, RTCSessionDescription answer) async {
-    final pc = _listenerConnections[listenerId];
-    if (pc != null) {
-      debugPrint('[WebRTCService] Setting answer for listener $listenerId');
-      await pc.setRemoteDescription(answer);
-    }
-  }
-  
-  /// Add ICE candidate for specific listener (broadcaster side)
-  Future<void> addListenerIceCandidate(String listenerId, RTCIceCandidate candidate) async {
-    final pc = _listenerConnections[listenerId];
-    if (pc != null) {
-      await pc.addCandidate(candidate);
-      debugPrint('[WebRTCService] Added ICE candidate for listener $listenerId');
-    }
-  }
-  
-  /// Toggle broadcast mute
-  void toggleBroadcastMute() {
-    if (!_isBroadcasting) return;
-    
-    _isBroadcastMuted = !_isBroadcastMuted;
-    debugPrint('[WebRTCService] Broadcast mute toggled: $_isBroadcastMuted');
-    notifyListeners();
-  }
-  
-  /// Stop broadcasting
-  Future<void> stopBroadcast() async {
-    debugPrint('[WebRTCService] Stopping broadcast');
-    
-    // Stop heartbeat timer
-    _broadcastHeartbeatTimer?.cancel();
-    _broadcastHeartbeatTimer = null;
-    _lastAudioData = null;
-    
-    // Cancel audio stream subscription
-    await _audioStreamSubscription?.cancel();
-    _audioStreamSubscription = null;
-    
-    // Close all data channels
-    for (final dataChannel in _listenerDataChannels.values) {
-      await dataChannel.close();
-    }
-    _listenerDataChannels.clear();
-    
-    // Close all listener connections
-    for (final pc in _listenerConnections.values) {
-      await pc.close();
-    }
-    _listenerConnections.clear();
-    
-    // No local stream to dispose in data channel approach
-    _localStream = null;
-    
-    _isBroadcasting = false;
-    _isBroadcastMuted = false;
-    notifyListeners();
   }
   
   /// Ensure stereo in SDP for high-quality audio
@@ -626,6 +484,61 @@ class WebRTCService extends ChangeNotifier {
       return sdp;
     }
   }
+  
+  /// Handle answer from listener (broadcaster side)
+  Future<void> handleAnswer(String listenerId, RTCSessionDescription answer) async {
+    final pc = _listenerConnections[listenerId];
+    if (pc != null) {
+      debugPrint('[WebRTCService] Setting answer for listener $listenerId');
+      await pc.setRemoteDescription(answer);
+    }
+  }
+  
+  /// Add ICE candidate for specific listener (broadcaster side)
+  Future<void> addListenerIceCandidate(String listenerId, RTCIceCandidate candidate) async {
+    final pc = _listenerConnections[listenerId];
+    if (pc != null) {
+      await pc.addCandidate(candidate);
+      debugPrint('[WebRTCService] Added ICE candidate for listener $listenerId');
+    }
+  }
+  
+  /// Toggle broadcast mute
+  void toggleBroadcastMute() {
+    if (!_isBroadcasting || _localStream == null) return;
+    
+    _isBroadcastMuted = !_isBroadcastMuted;
+    
+    // Enable/disable audio tracks based on mute state
+    _localStream!.getAudioTracks().forEach((track) {
+      track.enabled = !_isBroadcastMuted;
+    });
+    
+    debugPrint('[WebRTCService] Broadcast mute toggled: $_isBroadcastMuted');
+    notifyListeners();
+  }
+  
+  /// Stop broadcasting
+  Future<void> stopBroadcast() async {
+    debugPrint('[WebRTCService] Stopping broadcast');
+    
+    // Close all listener connections
+    for (final pc in _listenerConnections.values) {
+      await pc.close();
+    }
+    _listenerConnections.clear();
+    
+    // Stop and dispose local stream
+    if (_localStream != null) {
+      _localStream!.getTracks().forEach((track) => track.stop());
+      await _localStream!.dispose();
+      _localStream = null;
+    }
+    
+    _isBroadcasting = false;
+    _isBroadcastMuted = false;
+    notifyListeners();
+  }
 
   /// Close the peer connection
   Future<void> close() async {
@@ -633,7 +546,7 @@ class WebRTCService extends ChangeNotifier {
     
     // Stop broadcast if active
     if (_isBroadcasting) {
-     await stopBroadcast();
+      await stopBroadcast();
     }
     
     // Close listener peer connection
