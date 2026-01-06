@@ -223,9 +223,6 @@ Edit the WebSocket server URL in the client code if deploying to a different ser
 
 Contributions are welcome! Feel free to submit issues or pull requests.
 
-## 📄 License
-
-MIT License - feel free to use this project for personal or commercial purposes.
 
 ## 🙏 Acknowledgments
 
