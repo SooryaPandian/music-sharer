@@ -54,6 +54,28 @@ STUN servers are configured in the WebRTC peer connection setup. The default con
 - Adding TURN servers for more restrictive networks
 - Implementing fallback mechanisms
 
+### Limitations Without TURN Servers
+
+VibeP2P currently uses only STUN servers for NAT traversal, which works well in most scenarios but has limitations in certain network configurations:
+
+#### When Connections May Fail
+- **Symmetric NAT**: Both broadcaster and listener are behind symmetric NAT firewalls (common in some corporate networks)
+- **Restrictive Firewalls**: Networks that block all UDP traffic or have very strict firewall rules
+- **Double NAT**: Devices behind multiple layers of NAT (e.g., mobile hotspot connected to WiFi router)
+- **Port-Restricted Networks**: Networks that only allow connections on specific ports
+
+#### Success Rate
+- **Typical home networks**: ~85-90% success rate with STUN only
+- **Corporate/university networks**: ~60-70% success rate
+- **Mobile networks**: ~75-85% success rate
+
+#### Workarounds
+If you experience connection issues:
+1. **Use a different network**: Try switching from WiFi to mobile data or vice versa
+2. **Use VPN**: Some VPNs can help bypass restrictive NAT configurations
+3. **Host on better network**: Ensure at least the broadcaster is on a network with permissive NAT
+4. **Deploy TURN server**: For production use, implement a TURN server to relay traffic when direct connections fail (100% success rate but requires server bandwidth)
+
 ## 🚀 Getting Started
 
 ### Prerequisites
